@@ -10,29 +10,25 @@ The original model lives at https://github.com/federico-pesamosca/plasmaless-tok
 git clone -b IMAS_Muscle3 https://github.com/federico-pesamosca/plasmaless-tokamak-circuits.git
 ```
 
+## Description
+
+The model evolves the coupled circuit dynamics of the ITER active coils, \(a\), and passive vessel conductive elements, \(e\). For applied active-coil voltages **Va**, the circuit equations are
+
+|&nbsp; Maa&nbsp; Mae&nbsp; |&nbsp; |&nbsp; dIa/dt&nbsp; | + |&nbsp; Ra&nbsp; 0&nbsp; |&nbsp; |&nbsp;Ia&nbsp;| = |&nbsp;Va| \
+|&nbsp; Mea&nbsp; Mee&nbsp; |&nbsp; |&nbsp; dIe/dt&nbsp; |&nbsp;&nbsp;&nbsp;   |&nbsp; 0&nbsp; Re&nbsp; |&nbsp; |&nbsp;Ie&nbsp;|&nbsp;&nbsp;&nbsp; |&nbsp; 0&nbsp;|
+
+Here, **M** is the mutual-inductance matrix, **R** contains the circuit resistances, and **Ia** and **Ie** are the active- and passive-element currents. Magnetic flux on the DINA grid is computed from the currents as
+
+psi = Mxi |&nbsp;I_a&nbsp;|
+          |&nbsp;I_e&nbsp;|
+
+where **Mxi** is the Green’s-function matrix mapping conductor currents to flux on that grid. For ITER, **Ra = 0** (superconductivity) is assumed for all coils **except the VS** (vertical stabilization) circuit.
+
+The Simulink model `plasmaless_timestep.slx` is included as a referenced model in `simulator_plasmaless_model_simulink.slx`. It evolves the circuit response to an input voltage time series Va.
+
+## DD4 machine description data
+
 **The model uses IMAS Data Dictionary 4 (DD4) only.** The machine description (`em_coupling`, `pf_active`, `pf_passive`, `wall`) is read from the `.h5` files in `data/md_dd4`. The original DD3 IDSs (DINA `em_coupling`, `pf_active` and `equilibrium`, ITER_MD `pf_passive` and `wall`) are converted to DD 4.1.1 once, with `tools/convert_md_dd3_to_dd4.py`; no DD3 data is read when the model runs.
-
-### MATLAB, Simulink and IMAS simulations (SDCC)
-
-`run_plasmaless_model` (Simulink and MATLAB modes), `run_plasmaless_imas`, the plotting and the tests run with MATLAB R2024a on SDCC:
-
-```bash
-module purge
-module load IMAS-MATLAB/5.5.0-intel-2023b-DD-4.1.0
-module unload MATLAB/2023b-r5-GCCcore-13.2.0
-module load MATLAB/2024a-r6-GCCcore-13.2.0
-matlab
-```
-
-Then, in MATLAB, from the repository root:
-
-```matlab
-add_plasmaless_paths     % adds the local subfolders (works whatever the name of the cloned folder)
-run_plasmaless_model     % MATLAB or Simulink simulation
-run_plasmaless_imas      % IMAS interface
-```
-
-### Generate the DD4 machine description
 
 `data/md_dd4` is shipped with the repository. Regenerate it (for example for another DINA entry) with the conversion script, which needs the DD3 sources and imas-python:
 
@@ -58,7 +54,27 @@ The script rereads what it wrote and checks it against the DD3 sources. Expected
 | `wall.h5` | limiter outlines used for plotting: `First Wall` (unit 1) and `Divertor` (unit 2) |
 | `master.h5` | HDF5 master file linking the four IDSs above |
 
-### MUSCLE3 standalone run
+## MATLAB setup for simulation (SDCC)
+
+`run_plasmaless_model` (Simulink and MATLAB modes), `run_plasmaless_imas`, the plotting and the tests run with MATLAB R2024a on SDCC:
+
+```bash
+module purge
+module load IMAS-MATLAB/5.5.0-intel-2023b-DD-4.1.0
+module unload MATLAB/2023b-r5-GCCcore-13.2.0
+module load MATLAB/2024a-r6-GCCcore-13.2.0
+matlab
+```
+
+Then, in MATLAB, from the repository root:
+
+```matlab
+add_plasmaless_paths     % adds the local subfolders (works whatever the name of the cloned folder)
+run_plasmaless_model     % MATLAB or Simulink simulation
+run_plasmaless_imas      % IMAS interface
+```
+
+## MUSCLE3 standalone run
 
 ```bash
 muscle3/run_plasmaless_muscle3.sh     # loads its own modules
@@ -67,22 +83,6 @@ muscle3/run_plasmaless_muscle3.sh     # loads its own modules
 MATLAB R2025b hangs on figure rendering/export on the SDCC login nodes, so plotting is off by default (`do_plot = 0`); use the MATLAB R2024a setup above.
 
 No other installation is required.
-
-## Description
-
-The model evolves the coupled circuit dynamics of the ITER active coils, \(a\), and passive vessel conductive elements, \(e\). For applied active-coil voltages **Va**, the circuit equations are
-
-|&nbsp; Maa&nbsp; Mae&nbsp; |&nbsp; |&nbsp; dIa/dt&nbsp; | + |&nbsp; Ra&nbsp; 0&nbsp; |&nbsp; |&nbsp;Ia&nbsp;| = |&nbsp;Va| \
-|&nbsp; Mea&nbsp; Mee&nbsp; |&nbsp; |&nbsp; dIe/dt&nbsp; |&nbsp;&nbsp;&nbsp;   |&nbsp; 0&nbsp; Re&nbsp; |&nbsp; |&nbsp;Ie&nbsp;|&nbsp;&nbsp;&nbsp; |&nbsp; 0&nbsp;|
-
-Here, **M** is the mutual-inductance matrix, **R** contains the circuit resistances, and **Ia** and **Ie** are the active- and passive-element currents. Magnetic flux on the DINA grid is computed from the currents as
-
-psi = Mxi |&nbsp;I_a&nbsp;|
-          |&nbsp;I_e&nbsp;|
-
-where **Mxi** is the Green’s-function matrix mapping conductor currents to flux on that grid. For ITER, **Ra = 0** (superconductivity) is assumed for all coils **except the VS** (vertical stabilization) circuit.
-
-The Simulink model `plasmaless_timestep.slx` is included as a referenced model in `simulator_plasmaless_model_simulink.slx`. It evolves the circuit response to an input voltage time series Va.
 
 ## MATLAB/Simulink basic simulation
 - **Add the local paths**
@@ -132,7 +132,7 @@ The model is built once, then stepped once per time step:
 - Example driver: `run_plasmaless_imas.m` (repo root, next to `run_plasmaless_model.m`; type `run_plasmaless_imas` from the repo root) uses the same input voltages as `run_plasmaless_model.m`, calls `simulator_plasmaless_model_imas` (one input slice per step), and can write the output slices with `ids_put_slice` (`write_output = 1`).
   It saves `time`, `Ia`, `Ie` and the coil/loop names to `results_file` (default `plasmaless_imas_results.mat` in the repository root; generated result files are ignored by git). Set `do_plot = 1` before the call to plot at the end with `plot_plasmaless_model.m`; `run_plasmaless_imas.m` builds the `out.simout` timeseries `[Ia Ie]` that this script expects.
 
-### DD4 machine description
+## DD4 machine description
 
 The `em_coupling` is the DD4 IDS with `coupling_matrix` entries named `mutual_active_active`, `mutual_passive_active`, `mutual_passive_passive`, `mutual_grid_active` and `mutual_grid_passive`; `get_coupling_matrix` checks the name, the quantity (magnetic flux) and that `rows_uri`/`columns_uri` refer to the expected nodes. The files in `data/md_dd4` (not pulse-specific; default of `run_plasmaless_imas.m`, `run_plasmaless_model.m`, the plots and the MUSCLE3 actor) are made from the DD3 IDSs by `tools/convert_md_dd3_to_dd4.py` (see Installation). DD3 IDSs are not read by the model: the DD4 IMAS-MATLAB API returns an empty `coupling_matrix` for a DD3 entry, so DD3 data must be converted first.
 
