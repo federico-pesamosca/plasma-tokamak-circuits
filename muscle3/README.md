@@ -93,7 +93,8 @@ default. Run (2 cores, ~3 min):
 Run directory (MUSCLE3 logs only, printed at the end):
 `/scratch/users/$USER/plasmaless/m3_standalone_<date>`. The results file
 `plasmaless_muscle3_results.mat` (repository root, ignored by git) has the
-`run_plasmaless_imas.m` layout; plot it in MATLAB R2024b (`module load MATLAB/2024b-r5`)
-from the repository root with
-`results_file = 'plasmaless_muscle3_results.mat'; plot_plasmaless_imas`.
+`run_plasmaless_imas.m` layout. To plot it with `plot_plasmaless_model.m`, load it in
+MATLAB from the repository root and build the variables that script uses:
+`load('plasmaless_muscle3_results.mat'); out.simout = timeseries([Ia Ie], time);`
+`tstart = time(1); tend = time(end); TS = timeseries_plasmaless_model(tstart,tend,time(2)-time(1)); plot_plasmaless_model`.
 With the same dt, the currents equal those of `run_plasmaless_imas.m`.

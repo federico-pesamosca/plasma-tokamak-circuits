@@ -1,12 +1,14 @@
-function [model, x0] = plasmaless_model_from_ids(em_coupling, pf_active, pf_passive, dt, ...
+function [model, x0] = configure_plasmaless_model(em_coupling, pf_active, pf_passive, dt, ...
     pf_active_init, pf_passive_init)
-% build the discrete plasmaless coil-vessel model from machine-description IDSs
-% em_coupling: DD3 (mutual_* fields) or DD4 (coupling_matrix entries named
-%              mutual_active_active, mutual_passive_active, mutual_passive_passive)
-% pf_active:   coils (name/identifier, resistance), same order as em_coupling
+% build the discrete plasmaless coil-vessel model from DD4 machine-description IDSs
+% (see load_plasmaless_md.m, which reads the .h5 entry in data/md_dd4)
+% em_coupling: DD4, coupling_matrix entries named
+%              mutual_active_active, mutual_passive_active, mutual_passive_passive
+% pf_active:   coils (name, resistance), same order as em_coupling
 % pf_passive:  loops (name, resistance), same order as em_coupling
-% Same construction as configure_plasmaless_model.m, with the resistance of
-% every coil read from pf_active.
+% The resistance of every coil and loop is read from the IDSs.
+% Output model: sysd, A, B, C, D (discrete), dt, M, R, coil_names, loop_names,
+% n_coils, n_loops.
 % pf_active_init, pf_passive_init (optional, warm start): single time slice
 % giving the initial state x0 = [Ia; Ie]; coils are matched to the model by
 % short name, loops by position (name checked). Without them x0 is zero.
@@ -44,16 +46,10 @@ for ii = 1:n_loops
 end
 R = blkdiag(Raa,Ree);
 
-% labels
-in_label = strcat('V',coil_names);
-out_label = [strcat('Ia',coil_names) strcat('Ie',loop_names)];
-
 % build state space
 Ac = -M\R; Bc = M\eye(n_coils+n_loops,n_coils);
 Cc = eye(size(M)); Dc = zeros(size(Cc,1),size(Bc,2));
 sys = ss(Ac,Bc,Cc,Dc);
-sys.InputName = in_label;
-sys.OutputName = out_label;
 sysd = c2d(sys,dt);
 
 model.sysd = sysd;
@@ -68,8 +64,6 @@ model.coil_names = coil_names;
 model.loop_names = loop_names;
 model.n_coils = n_coils;
 model.n_loops = n_loops;
-model.in_label = in_label;
-model.out_label = out_label;
 
 % initial state
 x0 = zeros(n_coils+n_loops,1);   % cold start, as x0 = zeros(size(A,1),1) in run_plasmaless_model.m
@@ -97,56 +91,14 @@ end
 end
 
 function [Maa, Mea, Mee] = get_mutuals(em_coupling)
-if isfield(em_coupling,'mutual_active_active')
-    % DD3
-    Maa = em_coupling.mutual_active_active;
-    Mea = em_coupling.mutual_passive_active;
-    Mee = em_coupling.mutual_passive_passive;
-elseif isfield(em_coupling,'coupling_matrix')
-    % DD4
-    Maa = get_matrix(em_coupling,'mutual_active_active','pf_active/coil','pf_active/coil');
-    Mea = get_matrix(em_coupling,'mutual_passive_active','pf_passive/loop','pf_active/coil');
-    Mee = get_matrix(em_coupling,'mutual_passive_passive','pf_passive/loop','pf_passive/loop');
-else
-    error('plasmaless:emCoupling','em_coupling has neither mutual_* fields (DD3) nor coupling_matrix (DD4).');
+if ~isfield(em_coupling,'coupling_matrix')
+    error('plasmaless:emCoupling','em_coupling has no coupling_matrix (DD4 expected).');
 end
+Maa = get_coupling_matrix(em_coupling,'mutual_active_active','pf_active/coil','pf_active/coil');
+Mea = get_coupling_matrix(em_coupling,'mutual_passive_active','pf_passive/loop','pf_active/coil');
+Mee = get_coupling_matrix(em_coupling,'mutual_passive_passive','pf_passive/loop','pf_passive/loop');
 if isempty(Maa) || isempty(Mea) || isempty(Mee)
     error('plasmaless:emCoupling','em_coupling mutual inductance matrices are empty.');
-end
-end
-
-function data = get_matrix(em_coupling, name, rows, cols)
-found = [];
-for ii = 1:numel(em_coupling.coupling_matrix)
-    if strcmp(strtrim(em_coupling.coupling_matrix{ii}.name), name)
-        found(end+1) = ii; %#ok<AGROW>
-    end
-end
-if numel(found) ~= 1
-    error('plasmaless:emCoupling', ['em_coupling has %d coupling_matrix named %s ', ...
-        '(DD3 entries read with a DD4 API have none: convert them with ', ...
-        'tools/convert_md_dd3_to_dd4.py).'], numel(found), name);
-end
-cm = em_coupling.coupling_matrix{found};
-if cm.quantity.index ~= 1
-    error('plasmaless:emCoupling','coupling_matrix %s: quantity index %d is not 1 (magnetic_flux).', ...
-        name, cm.quantity.index);
-end
-data = cm.data;
-check_uri(cm.rows_uri, rows, size(data,1), name);
-check_uri(cm.columns_uri, cols, size(data,2), name);
-end
-
-function check_uri(uri, node, n, name)
-% accept 'node(:)' or the explicit list 'node(1)'..'node(n)'
-uri = cellstr(uri);
-if isequal(uri, {[node '(:)']})
-    return
-end
-expected = arrayfun(@(i) sprintf('%s(%d)',node,i), 1:n, 'UniformOutput', false);
-if ~isequal(strtrim(uri(:)'), expected)
-    error('plasmaless:emCoupling','coupling_matrix %s: rows/columns uri do not refer to %s(1..%d) in order.', ...
-        name, node, n);
 end
 end
 
@@ -166,17 +118,12 @@ end
 
 function key = coil_key(coil)
 % short coil key (e.g. 'CS3U', 'VS3U') of a pf_active.coil{i} element
-% DD3: identifier when present and non-empty, else name
-% DD4: name; a long name 'Long description (KEY)' gives 'KEY'
+% name; a long name 'Long description (KEY)' gives 'KEY'
 
-if isfield(coil,'identifier') && ~isempty(strtrim(coil.identifier))
-    key = coil.identifier;
-else
-    key = coil.name;
-    tok = regexp(key,'\(([^()]*)\)','tokens','once');
-    if ~isempty(tok)
-        key = tok{1};
-    end
+key = coil.name;
+tok = regexp(key,'\(([^()]*)\)','tokens','once');
+if ~isempty(tok)
+    key = tok{1};
 end
 key = strtrim(key);
 if isempty(key)

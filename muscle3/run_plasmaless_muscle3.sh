@@ -28,7 +28,5 @@ rc=$?
 
 echo "muscle_manager exit code: $rc"
 echo "Logs:    $run_dir (muscle3_manager.log, instances/*/stdout.txt, stderr.txt)"
-echo "Results: $results_file"
-echo "Plot (MATLAB R2024b: module load MATLAB/2024b-r5), from $PLASMALESS_REPO:"
-echo "  results_file = 'plasmaless_muscle3_results.mat'; plot_plasmaless_imas"
+echo "Results: $results_file (time, Ia, Ie, coil_names, loop_names)"
 exit $rc

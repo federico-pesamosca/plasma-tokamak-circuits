@@ -16,11 +16,13 @@ Nframes = 500;
 t_subsample = linspace(tstart,tend,Nframes);
 
 % passive elements location
-[RR,ZZ] = recover_grid();
-[r_lim,z_lim,r_div,z_div] = recover_wall();
-Mxi = recover_mutual_grid_conductors();
-ids_idx = imas_open_env('ids', 115005, 3, 'public','ITER_MD', '3');
-pf_passive = ids_get(ids_idx,'pf_passive');
+[em_coupling,pf_active,pf_passive,wall] = load_plasmaless_md();
+[Mxi,RR,ZZ] = plasmaless_grid_from_ids(em_coupling);
+% wall outlines (limiter unit 1 = first wall, unit 2 = divertor)
+r_lim = wall.description_2d{1}.limiter.unit{1}.outline.r;
+z_lim = wall.description_2d{1}.limiter.unit{1}.outline.z;
+r_div = flip(wall.description_2d{1}.limiter.unit{2}.outline.r);
+z_div = flip(wall.description_2d{1}.limiter.unit{2}.outline.z);
 
 r_e = zeros(102,1);
 z_e = zeros(102,1);
@@ -31,10 +33,19 @@ end
 r_e(1:2) = []; % empty element 2
 z_e(1:2) = [];
 
+% plot labels (from the DD4 machine description)
+coil_names = cell(1,numel(pf_active.coil));
+for ii = 1:numel(coil_names)
+    key = strtrim(pf_active.coil{ii}.name);
+    tok = regexp(key,'\(([^()]*)\)','tokens','once');
+    if ~isempty(tok), key = strtrim(tok{1}); end
+    coil_names{ii} = key;
+end
+loop_names = cellfun(@(l) strtrim(l.name), pf_passive.loop(:)', 'UniformOutput', false);
+in_label = strcat('V',coil_names);
+out_label = [strcat('Ia',coil_names) strcat('Ie',loop_names)];
+
 % active elements location
-ids_idx = imas_open('imas:mdsplus?path=/work/projects/dina/SRO_JINTRAC/15MA_10perc/output' );
-em_coupling = ids_get(ids_idx,'em_coupling');
-pf_active = ids_get(ids_idx,'pf_active');
 Ncoils = 12;
 r_a = zeros(Ncoils,1);
 z_a = zeros(Ncoils,1);
@@ -86,7 +97,7 @@ for k = 1:N
     plot(ax(k), t, u(:,k), 'LineWidth', 1);
     xlim(ax(k), [t(1), t(end)]);
     ylim([-18 18]);
-    ylabel(ax(k), sysd_plasmaless.InputName(k));
+    ylabel(ax(k), in_label(k));
     if k < N
         ax(k).XTickLabel = [];
     end
@@ -114,7 +125,7 @@ for k = 1:N
     else
         ylim([-1550 1550]);
     end
-    ylabel(ax(k), sysd_plasmaless.OutputName(k));
+    ylabel(ax(k), out_label(k));
     if k < N
         ax(k).XTickLabel = [];
     end
@@ -226,44 +237,3 @@ for tt = 1:Nframes
     pause(0.001)
 end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% functions
-%% recover grid
-function [RR,ZZ] = recover_grid()
-shot = 135011;
-run = 7;
-time = 1;
-interp = 1;
-database = 'ITER';
-user = 'public';
-ids_idx = imas_open_env('ids', shot, run, 'public', database, '3');
-slice = ids_get_slice(ids_idx, 'equilibrium', time, interp);        
-RR     = [slice.time_slice{1}.profiles_2d{1}.r]';
-ZZ     = [slice.time_slice{1}.profiles_2d{1}.z]' ;
-end
-
-%% recover wall
-function [r_lim,z_lim,r_div,z_div] = recover_wall()
-
-shot_number = 116000;
-run_number  = 2;
-database    = 'ITER_MD';
-ids_idx = imas_open_env('ids', shot_number, run_number, 'public', database, '3');
-wall = ids_get(ids_idx, 'wall');
-r_lim = wall.description_2d{1}.limiter.unit{1}.outline.r;
-z_lim = wall.description_2d{1}.limiter.unit{1}.outline.z;
-r_div = wall.description_2d{1}.limiter.unit{2}.outline.r;
-z_div = wall.description_2d{1}.limiter.unit{2}.outline.z;
-r_div = flip(r_div);
-z_div = flip(z_div);
-end
-
-%% recover Green functions 
-function Mxi = recover_mutual_grid_conductors()
-
-ids_idx = imas_open('imas:mdsplus?path=/work/projects/dina/SRO_JINTRAC/15MA_10perc/output' );
-em_coupling = ids_get(ids_idx,'em_coupling');
-Mxa = em_coupling.mutual_grid_active;
-Mxe = em_coupling.mutual_grid_passive;
-Mxi = [Mxa,Mxe];
-end

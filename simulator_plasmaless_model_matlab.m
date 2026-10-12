@@ -1,10 +1,15 @@
-function out = simulator_plasmaless_model_matlab(TS,A,B,C,D,x0,out_label)
+function out = simulator_plasmaless_model_matlab(TS,model,x0)
 % run the ABCD model for an initial condition x0 and input timeseries TS
-% to generate the output structure out with signal names out_label coherent
-% with the simulink output of simulator_plasmaless_model_simulink, 
-% developed for the plasmaless model
+% to generate the output structure out, coherent with the simulink output
+% of simulator_plasmaless_model_simulink, developed for the plasmaless model
+
+A = model.A;
+B = model.B;
+C = model.C;
+D = model.D;
 
 y = zeros(numel(TS.Time),size(C,1));
+
 for tt = 1:numel(TS.Time)
     if tt == 1
         x = x0;
@@ -16,4 +21,3 @@ for tt = 1:numel(TS.Time)
 end
 out.tout = TS.Time;
 out.simout = timeseries(y,TS.time);
-out.signalNames = out_label;

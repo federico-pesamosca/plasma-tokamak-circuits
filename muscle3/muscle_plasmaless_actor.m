@@ -111,7 +111,7 @@ pfa_t0 = closest_slice(pfa_init, t0, coil_names);
 % ASSUMPTION: the vessel (pf_passive loop) currents are zero at t0. The
 % scenario data carried by the workflow has no passive-structure currents, so
 % there is no source for them; this is a modelling assumption, not a default
-% of the model (plasmaless_model_from_ids needs them explicitly).
+% of the model (configure_plasmaless_model needs them explicitly).
 pfp_t0 = ids_init('pf_passive');
 pfp_t0.ids_properties.homogeneous_time = 1;
 pfp_t0.time = t0;
@@ -120,7 +120,7 @@ for ii = 1:numel(pf_passive_md.loop)
     pfp_t0.loop{ii}.name = pf_passive_md.loop{ii}.name;
     pfp_t0.loop{ii}.current = 0;
 end
-[model, x] = plasmaless_model_from_ids(em_coupling, pf_active_md, pf_passive_md, dt, pfa_t0, pfp_t0);
+[model, x] = configure_plasmaless_model(em_coupling, pf_active_md, pf_passive_md, dt, pfa_t0, pfp_t0);
 fprintf('muscle_plasmaless_actor: model built, %d coils, %d passive loops\n', model.n_coils, model.n_loops);
 
 % time loop
@@ -281,7 +281,7 @@ instance.send(port, msg);
 end
 
 function key = short_name(coil)
-% short coil key, same rule as imas_model/plasmaless_model_from_ids.m coil_key
+% short coil key, same rule as imas_model/configure_plasmaless_model.m coil_key
 if isfield(coil,'identifier') && ~isempty(strtrim(coil.identifier))
     key = coil.identifier;
 else

@@ -5,48 +5,43 @@
 
 clearvars -except do_plot
 % plot at the end (set do_plot = 1 before calling to enable). Default 0:
-% plotting in R2025b hangs on SDCC login nodes; plot afterwards in R2024b with
-%   results_file = 'plasmaless_simulink_results.mat'; plot_plasmaless_imas
+% plotting in R2025b hangs on SDCC login nodes; use R2024b (plot_plasmaless_model)
 if ~exist('do_plot','var'), do_plot = 0; end
 
 %% flag for executing matlab or simulink mode
-mode = 'matlab'; % 'matlab' or 'simulink'
+mode = 'simulink'; % 'matlab' or 'simulink'
 
 %% simulation parameters
 tstart = 0;
 tend = 28;
 dt = 0.001;
 
-%% load model
-[sysd_plasmaless,A,B,C,D,in_label,out_label] = configure_plasmaless_model(dt);
+%% load model (DD4 machine description in data/md_dd4)
+[em_coupling,pf_active,pf_passive] = load_plasmaless_md();
+[model,x0] = configure_plasmaless_model(em_coupling,pf_active,pf_passive,dt);
+% matrices used by the simulink model and by the matlab simulator (base workspace)
 
 %% prepare timeseries
 TS = timeseries_plasmaless_model(tstart,tend,dt);
-x0 = zeros(size(A,1),1);
 
 %% run model
 switch mode
     case 'simulink'
+        A = model.A; B = model.B; C = model.C; D = model.D;
         out = sim('simulator_plasmaless_model_simulink.slx');
-        out.signalNames = out_label;
     case 'matlab'
-        out = simulator_plasmaless_model_matlab(TS,A,B,C,D,x0,out_label);
+        out = simulator_plasmaless_model_matlab(TS,model,x0);
 end
 
 %% save results (same variables and units as run_plasmaless_imas.m)
 time = out.simout.Time;
 y = squeeze(out.simout.Data);
 if size(y,1) ~= numel(time), y = y.'; end
-n_coils = numel(in_label);
+n_coils = model.n_coils;
 Ia = y(:,1:n_coils);
 Ie = y(:,n_coils+1:end);
-% coil names: pf_active identifiers of the configure_plasmaless_model entry
-% (CS3U..PF6, VS3U, VS3L; its labels say VSU/VSL), as run_plasmaless_imas.m
-ids_idx = imas_open('imas:mdsplus?path=/work/projects/dina/SRO_JINTRAC/15MA_10perc/output');
-pf_active = ids_get(ids_idx,'pf_active');
-imas_close(ids_idx);
-coil_names = cellfun(@(c) strtrim(c.identifier), pf_active.coil(1:n_coils)', 'UniformOutput', false);
-loop_names = regexprep(out_label(n_coils+1:end),'^Ie','');
+coil_names = model.coil_names;
+loop_names = model.loop_names;
 results_file = fullfile(fileparts(mfilename('fullpath')),'plasmaless_matlab_results.mat');
 save(results_file,'time','Ia','Ie','coil_names','loop_names','-v7');
 fprintf('Results saved to %s\n', results_file);

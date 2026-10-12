@@ -5,7 +5,7 @@ equilibrium and pf_active, then answers every actor output with the coil voltage
 the pulse train of timeseries_plasmaless_model.m, as run_plasmaless_imas.m applies
 them (cold start, u(t_k) over [t_k, t_k+dt]). Stores the received currents and saves
 them in the run_plasmaless_imas.m results layout (time, Ia, Ie, coil_names,
-loop_names), so plot_plasmaless_imas.m can plot them.
+loop_names), same variables as run_plasmaless_imas.m.
 
 Ports: O_I equilibrium_out, pf_active_out (to the actor's F_INIT), voltages_out (to
 pf_active_s); S equilibrium_in, pf_active_in, pf_passive_in (actor's O_I).

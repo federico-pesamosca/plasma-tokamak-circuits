@@ -25,9 +25,8 @@ cd muscle3
                             #     (MUSCLE3 logs in /scratch/users/$USER/plasmaless/m3_standalone_<date>)
 cd ..
 
-# Plotting (any of the three files; PNG next to the results file)
-module purge; module load MATLAB/2024b-r5
-matlab
-results_file = 'plasmaless_imas_results.mat'; plot_plasmaless_imas
-results_file = 'plasmaless_simulink_results.mat'; plot_plasmaless_imas
-results_file = 'plasmaless_muscle3_results.mat'; plot_plasmaless_imas
+# Plotting: set do_plot = 1 before the run (plot_plasmaless_model is called at the end of
+# run_plasmaless_imas / run_plasmaless_model; it reads the machine description in data/md_dd4,
+# so the IMAS-MATLAB DD-4.1.1 module is needed)
+do_plot = 1; run_plasmaless_imas
+do_plot = 1; run_plasmaless_model

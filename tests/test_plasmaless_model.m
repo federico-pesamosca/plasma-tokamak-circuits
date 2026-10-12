@@ -27,7 +27,7 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
         function addModelToPath(testCase)
             % tests/ is one level below the project root
             testCase.rootDir = fileparts(fileparts(mfilename('fullpath')));
-            addpath(testCase.rootDir);
+            addpath(genpath(testCase.rootDir));
         end
     end
 
@@ -54,13 +54,10 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             assignin('base','tend',28);   % short horizon -> fast test
             assignin('base','dt',0.01);
 
-            evalin('base', ...
-                ['[sysd_plasmaless,A,B,C,D,in_label,out_label] = ', ...
-                 'configure_plasmaless_model(dt);']);
+            test_plasmaless_model.configureBase(0.01);
 
             evalin('base', ...
                 'TS = timeseries_plasmaless_model(tstart,tend,dt);');
-            evalin('base','x0 = zeros(size(A,1),1);');
 
             % --- run model ---
             testCase.verifyWarningFree( ...
@@ -86,12 +83,9 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             assignin('base','tstart',0);
             assignin('base','tend',28);
             assignin('base','dt',0.001);
-            evalin('base', ...
-                ['[sysd_plasmaless,A,B,C,D,in_label,out_label] = ', ...
-                 'configure_plasmaless_model(dt);']);
+            test_plasmaless_model.configureBase(0.001);
             evalin('base', ...
                 'TS = timeseries_plasmaless_model(tstart,tend,dt);');
-            evalin('base','x0 = zeros(size(A,1),1);');
 
             testCase.verifyWarningFree( ...
                 @() evalin('base', ...
@@ -99,8 +93,7 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
                 'Simulink simulation raised a warning in the comparison test.');
             testCase.verifyWarningFree( ...
                 @() evalin('base', ...
-                    ['out_matlab = simulator_plasmaless_model_matlab(', ...
-                     'TS,A,B,C,D,x0,out_label);']), ...
+                    'out_matlab = simulator_plasmaless_model_matlab(TS,model,x0);'), ...
                 'MATLAB simulation raised a warning in the comparison test.');
 
             outSimulink = evalin('base','out_simulink');
@@ -130,13 +123,12 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             % small floating-point differences in larger current values.
             tol_abs = 1e-8; % [A]
             tol_rel = 1e-8;
-            labels = evalin('base','out_label');
             for k = 1:size(matlabData,2)
                 error = abs(simulinkData(:,k) - matlabData(:,k));
                 tolerance = tol_abs + tol_rel*abs(matlabData(:,k));
                 testCase.verifyLessThanOrEqual(max(error ./ tolerance), 1, ...
-                    sprintf(['Output %s: MATLAB/Simulink mismatch ', ...
-                    '(max absolute error %.6g A).'], labels{k}, max(error)));
+                    sprintf(['Output %d: MATLAB/Simulink mismatch ', ...
+                    '(max absolute error %.6g A).'], k, max(error)));
             end
         end
 
@@ -154,10 +146,7 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             assignin('base','tend',20);
             assignin('base','dt',0.05); % coarser dt -> fast test
 
-            evalin('base', ...
-                ['[sysd_plasmaless,A,B,C,D,in_label,out_label] = ', ...
-                 'configure_plasmaless_model(dt);']);
-            evalin('base','x0 = zeros(size(A,1),1);');
+            test_plasmaless_model.configureBase(0.05);
 
             V = 1;               % [V] step amplitude
             tol_rel = 1e-6;      % relative numerical slack on slope bounds
@@ -283,17 +272,10 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             assignin('base','tstart',tstart);
             assignin('base','tend',tend);
             assignin('base','dt',dt);
-            evalin('base', ...
-                ['[sysd_plasmaless,A,B,C,D,in_label,out_label] = ', ...
-                 'configure_plasmaless_model(dt);']);
-            evalin('base','x0 = zeros(size(A,1),1);');
+            model = test_plasmaless_model.configureBase(dt);
 
-            % Match the resistance assignment in configure_plasmaless_model:
-            % both coils currently use coil 13's resistance (VS3 fix).
-            ids_idx = imas_open( ...
-                'imas:mdsplus?path=/work/projects/dina/SRO_JINTRAC/15MA_10perc/output');
-            pf_active = ids_get(ids_idx,'pf_active');
-            resistance = repmat(pf_active.coil{13}.resistance, 1, 2);
+            % resistance of the driven coils from the model matrix R
+            resistance = [model.R(13,13) model.R(14,14)];
             testCase.assertTrue(all(isfinite(resistance) & resistance > 0), ...
                 'Driven coils must have finite positive resistance.');
             expectedCurrent = V ./ resistance;
@@ -370,32 +352,36 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
     end
 
     methods (Static, Access = private)
+        function model = configureBase(dt)
+            % Build the model from the DD4 machine description
+            % (load_plasmaless_md + configure_plasmaless_model) and put
+            % model, x0 and A,B,C,D in the base workspace (needed by the
+            % Simulink model and by evalin-based calls), as in
+            % run_plasmaless_model.m.
+            [em_coupling,pf_active,pf_passive] = load_plasmaless_md();
+            [model,x0] = configure_plasmaless_model(em_coupling,pf_active,pf_passive,dt);
+            assignin('base','model',model);
+            assignin('base','x0',x0);
+            assignin('base','A',model.A);
+            assignin('base','B',model.B);
+            assignin('base','C',model.C);
+            assignin('base','D',model.D);
+        end
+
         function [coilIdx, Lkk, M] = getCoilInfo(coilName)
             % Look up the (1-based) index of coilName among the 14 pf
             % coils, its self-inductance Lkk, and the full matrix M, using
-            % the same IMAS sources as configure_plasmaless_model.m.
-            ids_idx = imas_open( ...
-                'imas:mdsplus?path=/work/projects/dina/SRO_JINTRAC/15MA_10perc/output');
-            em_coupling = ids_get(ids_idx,'em_coupling');
-            pf_active = ids_get(ids_idx,'pf_active');
-            Maa = em_coupling.mutual_active_active;
-            Mea = em_coupling.mutual_passive_active;
-            Mee = em_coupling.mutual_passive_passive;
-            M = [Maa Mea'; Mea Mee];
-
-            coilIdx = [];
-            for ii = 1:numel(pf_active.coil)
-                if strcmp(pf_active.coil{ii}.name, coilName) || ...
-                        contains(pf_active.coil{ii}.name, coilName)
-                    coilIdx = ii;
-                    break
-                end
-            end
+            % the same machine description as configure_plasmaless_model.m
+            % (load_plasmaless_md).
+            [em_coupling,pf_active,pf_passive] = load_plasmaless_md();
+            model = configure_plasmaless_model(em_coupling,pf_active,pf_passive,0.01);
+            M = model.M;
+            coilIdx = find(strcmp(model.coil_names, coilName), 1);
             if isempty(coilIdx)
                 error('test_plasmaless_model:CoilNotFound', ...
                     'Coil %s not found in pf_active.coil.', coilName);
             end
-            Lkk = Maa(coilIdx,coilIdx);
+            Lkk = M(coilIdx,coilIdx);
         end
     end
 end
