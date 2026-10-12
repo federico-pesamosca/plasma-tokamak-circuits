@@ -1,32 +1,68 @@
 # All commands from the repository root. Results are saved in the repository root
-# (plasmaless_*_results.mat, ignored by git); the machine description is data/md_dd4.
-# Plotting hangs in MATLAB R2025b on the SDCC login nodes: do_plot = 0 by default,
-# plot afterwards with R2024b (last section).
+# (plasmaless_*_results.mat, ignored by git); the machine description is the DD4 entry
+# data/md_dd4 (.h5, read by imas_model/load_plasmaless_md.m).
+# One module recipe (IMAS-MATLAB DD-4.1.0 with MATLAB R2024a), used for BOTH the
+# simulation and the visualization in the same session: figures work on the SDCC
+# login nodes. The IMAS-MATLAB/5.6.0 (R2025b) modules also run the scripts, but
+# headless only (figures hang on the login nodes, MATLAB crashes at exit): keep them
+# as an alternative with do_plot = 0.
+# If your shell aliases matlab to `matlab -nodesktop -nosplash`, start the desktop
+# with `matlab -desktop` (or \matlab). maxNumCompThreads(2) keeps MATLAB within the
+# login-node guideline (2 cores); OMP_NUM_THREADS=1 does the same for the libraries.
 
-# Within Matlab, IMAS, without simulink
+# Module recipe (once per shell), then MATLAB
 module purge
-module load IMAS-MATLAB/5.6.0-intel-2025b-DD-4.1.1
+module load IMAS-MATLAB/5.5.0-intel-2023b-DD-4.1.0
+module unload MATLAB/2023b-r5-GCCcore-13.2.0
+module load MATLAB/2024a-r6-GCCcore-13.2.0
 export OMP_NUM_THREADS=1
-matlab
-maxNumCompThreads(2);   % optional, keeps it within the login-node guideline
+matlab                   # or matlab -desktop
+maxNumCompThreads(2);    % optional, keeps it within the login-node guideline
+
+# IMAS version (imas_model/: one plasmaless_step_ids call per time step)
 run_plasmaless_imas      % --> plasmaless_imas_results.mat
+do_plot = 1; run_plasmaless_imas    % same, plus plot_plasmaless_model at the end
 
-# Simulink equivalent:
-module purge
-module load IMAS-MATLAB/5.6.0-intel-2025b-DD-3.42.2
-export OMP_NUM_THREADS=1
-matlab
-maxNumCompThreads(2);
-run_plasmaless_model     % --> plasmaless_simulink_results.mat (do_plot = 1 before: original plots)
+# MATLAB/Simulink version (run_plasmaless_model.m); the mode variable in the script
+# selects 'simulink' (default, Simulink licence needed) or 'matlab': edit it there,
+# the script clears the workspace before setting it
+run_plasmaless_model     % --> plasmaless_matlab_results.mat
+do_plot = 1; run_plasmaless_model   % same, plus plot_plasmaless_model at the end
 
-# Muscle3 equivalent (dt 0.01)
+# MUSCLE3 standalone test (muscle3/: voltage_driver.py + actor, dt 0.01, t = 0..28 s,
+# ~3 min on 2 cores; the script loads its own modules, IMAS-MUSCLE3)
 cd muscle3
 ./run_plasmaless_muscle3.sh # --> plasmaless_muscle3_results.mat in the repository root
                             #     (MUSCLE3 logs in /scratch/users/$USER/plasmaless/m3_standalone_<date>)
 cd ..
+# in Slurm instead of the login node (from muscle3/, line from the script header):
+srun --partition=all_debug --time=00:30:00 --cpus-per-task=2 --mem=8G ./run_plasmaless_muscle3.sh
+# plot the MUSCLE3 results (MATLAB session of the recipe above, repository root), as in
+# muscle3/README.md: build the variables plot_plasmaless_model uses, then call it
+load('plasmaless_muscle3_results.mat'); out.simout = timeseries([Ia Ie], time);
+tstart = time(1); tend = time(end); TS = timeseries_plasmaless_model(tstart,tend,time(2)-time(1));
+plot_plasmaless_model
 
-# Plotting: set do_plot = 1 before the run (plot_plasmaless_model is called at the end of
-# run_plasmaless_imas / run_plasmaless_model; it reads the machine description in data/md_dd4,
-# so the IMAS-MATLAB DD-4.1.1 module is needed)
-do_plot = 1; run_plasmaless_imas
-do_plot = 1; run_plasmaless_model
+# Tests (MATLAB session of the recipe above, from the repository root; Simulink licence
+# needed; a few minutes each)
+runtests('tests/test_plasmaless_model.m')   % MATLAB/Simulink model: basic run, step responses, MATLAB-Simulink equivalence
+runtests('tests/test_plasmaless_imas.m')    % IMAS interface: IMAS step loop vs Simulink, contract errors, VS3 step
+# batch form (no desktop):
+matlab -singleCompThread -nodisplay -batch "runtests('tests/test_plasmaless_imas.m')"
+
+# DD3/DD4 data equivalence (tests/check_dd3_dd4_equivalence.m): two sessions, one module
+# stack each. Part 1 reads the DD3 sources (DINA em_coupling/pf_active/equilibrium grid,
+# ITER_MD pf_passive) and needs a DD <= 3.39 module (the flux maps mutual_grid_active/
+# passive were removed from the DD in 3.40.0); it saves
+# /scratch/users/$USER/plasmaless/dd3_reference.mat
+module purge
+module load IMAS/3.39.0-foss-2023b
+module unload MATLAB/2023b-r5-GCCcore-13.2.0
+module load MATLAB/2024a-r6-GCCcore-13.2.0
+matlab -singleCompThread -nodisplay -batch "part=1; run('tests/check_dd3_dd4_equivalence.m')"
+# Part 2 reads the DD4 entry data/md_dd4 with the recipe above and compares with the reference
+module purge
+module load IMAS-MATLAB/5.5.0-intel-2023b-DD-4.1.0
+module unload MATLAB/2023b-r5-GCCcore-13.2.0
+module load MATLAB/2024a-r6-GCCcore-13.2.0
+matlab -singleCompThread -nodisplay -batch "part=2; run('tests/check_dd3_dd4_equivalence.m')"

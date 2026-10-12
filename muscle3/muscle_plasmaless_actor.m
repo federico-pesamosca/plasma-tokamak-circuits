@@ -27,8 +27,12 @@ function muscle_plasmaless_actor()
 % which the actor stops (cc:178-195); otherwise pf_active_s is received and
 % gives the voltages of the next step (cc:197).
 
-% imas_model/ next to this folder (not a setting)
-addpath(fullfile(fileparts(fileparts(mfilename('fullpath'))),'imas_model'));
+% repository root (plasmaless_timestep_forward.m, the step function shared by
+% all model variants, lives there) and imas_model/ next to this folder (not a
+% setting)
+repo_root = fileparts(fileparts(mfilename('fullpath')));
+addpath(repo_root);
+addpath(fullfile(repo_root,'imas_model'));
 
 ports = py.dict();
 ports{py.getattr(@py.ymmsl.Operator,"F_INIT")} = py.list({"equilibrium_f_init", "pf_active_f_init"});

@@ -107,6 +107,8 @@ run `add_plasmaless_paths.m` to add the local subfolders.
   - the expected response to voltage steps in two resistive coils
   - MATLAB–Simulink output equivalence for the same input waveform and timing, checking matching timestamps and all active/passive current samples within numerical tolerance.
 
+  Two more scripts cover the IMAS interface: `tests/test_plasmaless_imas.m` (IMAS step loop vs Simulink, input/output contract errors, VS3 voltage step; run with `runtests` from the repository root) and `tests/check_dd3_dd4_equivalence.m` (the DD3 sources vs the DD4 entry `data/md_dd4`, two parts with two module stacks; see `howto.txt`).
+
 Both simulation modes require MATLAB, Control System Toolbox (for `ss` and `c2d`), IMAS-MATLAB (DD 4), and the DD4 files in `data/md_dd4`. Simulink is additionally required for Simulink mode and for running the full regression test suite.
 
 ## IMAS interface (imas_model/)
