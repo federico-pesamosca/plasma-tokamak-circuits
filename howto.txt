@@ -44,11 +44,17 @@ tstart = time(1); tend = time(end); TS = timeseries_plasmaless_model(tstart,tend
 plot_plasmaless_model
 
 # Tests (MATLAB session of the recipe above, from the repository root; Simulink licence
-# needed; a few minutes each)
+# needed; a few minutes each). With MATLAB R2024a, read the machine description once
+# BEFORE the first runtests call of the session (load_plasmaless_md below): the unit-test
+# framework loads MATLAB's own HDF5 1.8 library first, and the IMAS access layer (HDF5
+# 1.14) then fails with "HDF5 library version mismatched" / "MATLAB is exiting because of
+# fatal error". Reading an IMAS entry first loads the right library. Not needed with the
+# R2025b modules (same HDF5 1.14), where runtests can be called directly.
+add_plasmaless_paths; load_plasmaless_md();
 runtests('tests/test_plasmaless_model.m')   % MATLAB/Simulink model: basic run, step responses, MATLAB-Simulink equivalence
 runtests('tests/test_plasmaless_imas.m')    % IMAS interface: IMAS step loop vs Simulink, contract errors, VS3 step
 # batch form (no desktop):
-matlab -singleCompThread -nodisplay -batch "runtests('tests/test_plasmaless_imas.m')"
+matlab -singleCompThread -nodisplay -batch "add_plasmaless_paths; load_plasmaless_md(); runtests('tests/test_plasmaless_imas.m')"
 
 # DD3/DD4 data equivalence (tests/check_dd3_dd4_equivalence.m): two sessions, one module
 # stack each. Part 1 reads the DD3 sources (DINA em_coupling/pf_active/equilibrium grid,
@@ -59,10 +65,12 @@ module purge
 module load IMAS/3.39.0-foss-2023b
 module unload MATLAB/2023b-r5-GCCcore-13.2.0
 module load MATLAB/2024a-r6-GCCcore-13.2.0
-matlab -singleCompThread -nodisplay -batch "part=1; run('tests/check_dd3_dd4_equivalence.m')"
+matlab -singleCompThread -nodisplay -batch "addpath('tests'); part=1; check_dd3_dd4_equivalence"
 # Part 2 reads the DD4 entry data/md_dd4 with the recipe above and compares with the reference
 module purge
 module load IMAS-MATLAB/5.5.0-intel-2023b-DD-4.1.0
 module unload MATLAB/2023b-r5-GCCcore-13.2.0
 module load MATLAB/2024a-r6-GCCcore-13.2.0
-matlab -singleCompThread -nodisplay -batch "part=2; run('tests/check_dd3_dd4_equivalence.m')"
+matlab -singleCompThread -nodisplay -batch "addpath('tests'); part=2; check_dd3_dd4_equivalence"
+# (script on the path, not run('tests/...'): with R2024a, run() loads MATLAB's HDF5 1.8 before
+# the access layer, see the note on the tests above)
