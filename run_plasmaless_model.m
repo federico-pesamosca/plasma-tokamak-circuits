@@ -1,7 +1,7 @@
 % run simulator_plasmaless.slx (simulink) 
 % or simulator_plasmaless_model_matlab.m (matlab)
 % featuring dynamical plasmaless coil-vessel circuit model
-% and plot the results
+% (or an external linear model, see linear_model_dir) and plot the results
 
 clearvars -except do_plot
 % plot at the end (set do_plot = 1 before calling to enable). Default 0:
@@ -15,11 +15,30 @@ mode = 'simulink'; % 'matlab' or 'simulink'
 tstart = 0;
 tend = 28;
 dt = 0.001;
+% '' = circuit model built from the machine description; the path of a directory
+% holding linear_model.json + matrices = external linear model (deviations from
+% its linearisation point), e.g. fullfile(fileparts(mfilename('fullpath')),
+% 'linearModelSimple_105073_t84.417598'). Default: the environment variable
+% PLASMALESS_LINEAR_MODEL_DIR when set, else ''.
+linear_model_dir = getenv('PLASMALESS_LINEAR_MODEL_DIR');
 
 %% load model (DD4 machine description in data/md_dd4)
 [em_coupling,pf_active,pf_passive] = load_plasmaless_md();
-[model,x0] = configure_plasmaless_model(em_coupling,pf_active,pf_passive,dt);
-% matrices used by the simulink model and by the matlab simulator (base workspace)
+if isempty(linear_model_dir)
+    [model,x0] = configure_plasmaless_model(em_coupling,pf_active,pf_passive,dt);
+    results_file = fullfile(fileparts(mfilename('fullpath')),'plasmaless_matlab_results.mat');
+else
+    [model,x0] = configure_linear_model(linear_model_dir,dt,pf_active);
+    results_file = fullfile(fileparts(mfilename('fullpath')),'plasmaless_matlab_linear_results.mat');
+end
+% matrices used by the simulink model and by the matlab simulator (base workspace):
+% the output is [coil currents; loop currents; observables] (for the circuit model
+% C_full = eye(n_states), as before). Both simulators feed u directly, without the
+% op.voltage subtraction of plasmaless_step_ids: op is zero for the circuit model;
+% for a linear model the pulse train is a voltage deviation and the outputs are
+% deviations too (no op offsets added).
+C_full = [model.x_to_coil; model.x_to_loop; model.C_y];
+D_full = zeros(size(C_full,1), model.n_coils);
 
 %% prepare timeseries
 TS = timeseries_plasmaless_model(tstart,tend,dt);
@@ -27,10 +46,11 @@ TS = timeseries_plasmaless_model(tstart,tend,dt);
 %% run model
 switch mode
     case 'simulink'
-        A = model.A; B = model.B; C = model.C; D = model.D;
+        A = model.A; B = model.B; C = C_full; D = D_full;
         out = sim('simulator_plasmaless_model_simulink.slx');
     case 'matlab'
-        out = simulator_plasmaless_model_matlab(TS,model,x0);
+        model_sim = model; model_sim.C = C_full; model_sim.D = D_full;
+        out = simulator_plasmaless_model_matlab(TS,model_sim,x0);
 end
 
 %% save results (same variables and units as run_plasmaless_imas.m)
@@ -38,13 +58,22 @@ time = out.simout.Time;
 y = squeeze(out.simout.Data);
 if size(y,1) ~= numel(time), y = y.'; end
 n_coils = model.n_coils;
+n_loops = model.n_loops;
 Ia = y(:,1:n_coils);
-Ie = y(:,n_coils+1:end);
+Ie = y(:,n_coils+(1:n_loops));
+Y = y(:,n_coils+n_loops+(1:numel(model.y_names)));
 coil_names = model.coil_names;
 loop_names = model.loop_names;
-results_file = fullfile(fileparts(mfilename('fullpath')),'plasmaless_matlab_results.mat');
-save(results_file,'time','Ia','Ie','coil_names','loop_names','-v7');
+y_names = model.y_names;      % empty for the circuit model
+model_kind = model.kind;
+save(results_file,'time','Ia','Ie','Y','coil_names','loop_names','y_names','model_kind','-v7');
 fprintf('Results saved to %s\n', results_file);
 
 %% plot model
-if do_plot, plot_plasmaless_model; end
+if do_plot
+    if strcmp(model_kind,'circuit')
+        plot_plasmaless_model;
+    else
+        plot_plasmaless_linear;
+    end
+end

@@ -1,6 +1,7 @@
 % run the plasmaless coil-vessel model through its IMAS interface
 % (same inputs as run_plasmaless_model.m): the model is built from
-% machine-description IDSs, and every time step takes a one-slice pf_active
+% machine-description IDSs (or an external linear model, see
+% linear_model_dir), and every time step takes a one-slice pf_active
 % with the coil voltages at t and returns pf_active/pf_passive currents at t+dt
 
 clearvars -except do_plot
@@ -19,37 +20,59 @@ tend = 28;
 dt = 0.001;
 write_output = 0;   % 1: write the output slices to out_uri
 out_uri = 'imas:hdf5?path=/scratch/users/schneim/plasmaless/run_out';
-results_file = fullfile(repo_root,'plasmaless_imas_results.mat');  % saved time, Ia, Ie, names
+% '' = circuit model built from the machine description; the path of a directory
+% holding linear_model.json + matrices = external linear model (deviations from
+% its linearisation point), e.g. fullfile(repo_root,'linearModelSimple_105073_t84.417598').
+% Default: the environment variable PLASMALESS_LINEAR_MODEL_DIR when set, else ''.
+linear_model_dir = getenv('PLASMALESS_LINEAR_MODEL_DIR');
 
 %% load machine description
 % DD4 entry shipped in data/md_dd4, made with tools/convert_md_dd3_to_dd4.py
-% (IMAS-MATLAB DD-4.x module)
+% (IMAS-MATLAB DD-4.x module); also read for the linear model (coil names/order)
 md_uri = ['imas:hdf5?path=' fullfile(repo_root,'data','md_dd4')];
 fprintf('Loading machine description from %s\n', md_uri);
 [em_coupling,pf_active_md,pf_passive_md] = load_plasmaless_md(md_uri);
 
 %% build model and initial state (cold start)
-[model, x] = configure_plasmaless_model(em_coupling, pf_active_md, pf_passive_md, dt);
-fprintf('Model built: %d coils, %d passive loops, dt = %g s\n', model.n_coils, model.n_loops, dt);
-% warm start from a one-slice pf_active/pf_passive pair:
+if isempty(linear_model_dir)
+    [model, x] = configure_plasmaless_model(em_coupling, pf_active_md, pf_passive_md, dt);
+    results_file = fullfile(repo_root,'plasmaless_imas_results.mat');  % saved time, Ia, Ie, names
+else
+    % the pulse train is then a voltage deviation from the linearisation point
+    % (op.voltage of the descriptor, 0 for the received model); the saved Ia
+    % and Y are absolute values, op + deviation (op = 0 where not given)
+    [model, x] = configure_linear_model(linear_model_dir, dt, pf_active_md);
+    results_file = fullfile(repo_root,'plasmaless_linear_results.mat');
+end
+fprintf('Model built (%s): %d states, %d coils, %d passive loops, %d observables, dt = %g s\n', ...
+    model.kind, model.n_states, model.n_coils, model.n_loops, numel(model.y_names), dt);
+% warm start of the circuit model from a one-slice pf_active/pf_passive pair:
 % [model, x] = configure_plasmaless_model(em_coupling, pf_active_md, pf_passive_md, dt, ...
 %     pf_active_slice, pf_passive_slice);
 
 %% prepare inputs
 TS = timeseries_plasmaless_model(tstart,tend,dt);
 
-%% run model (one IMAS step per time step, see imas_model/simulator_plasmaless_model_imas.m)
+%% run model (one IMAS step per time step, see simulator_plasmaless_model_imas.m)
 if write_output, uri_arg = out_uri; else, uri_arg = []; end
-[time, Ia, Ie] = simulator_plasmaless_model_imas(TS, model, x, uri_arg);
+[time, Ia, Ie, Y] = simulator_plasmaless_model_imas(TS, model, x, uri_arg);
 
-%% save results and plot (plot_plasmaless_model.m)
+%% save results and plot (plot_plasmaless_model.m / plot_plasmaless_linear.m)
 coil_names = model.coil_names;
 loop_names = model.loop_names;
-save(results_file,'time','Ia','Ie','coil_names','loop_names','-v7');
+y_names = model.y_names;      % empty for the circuit model
+model_kind = model.kind;
+save(results_file,'time','Ia','Ie','Y','coil_names','loop_names','y_names','model_kind','-v7');
 fprintf('Results saved to %s\n', results_file);
 
 % same output structure as the Simulink/MATLAB simulators of run_plasmaless_model.m:
 % out.simout is a timeseries of [Ia Ie] (nt x (n_coils+n_loops)); TS, tstart, tend as above
 out.tout = time;
 out.simout = timeseries([Ia Ie], time);
-if do_plot, plot_plasmaless_model; end
+if do_plot
+    if strcmp(model_kind,'circuit')
+        plot_plasmaless_model;
+    else
+        plot_plasmaless_linear;
+    end
+end

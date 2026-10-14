@@ -3,9 +3,10 @@
 Stands in for the PDS controller (plasmaless_standalone.ymmsl): sends the F_INIT
 equilibrium and pf_active, then answers every actor output with the coil voltages of
 the pulse train of timeseries_plasmaless_model.m, as run_plasmaless_imas.m applies
-them (cold start, u(t_k) over [t_k, t_k+dt]). Stores the received currents and saves
-them in the run_plasmaless_imas.m results layout (time, Ia, Ie, coil_names,
-loop_names), same variables as run_plasmaless_imas.m.
+them (cold start, u(t_k) over [t_k, t_k+dt]). Stores the received currents and the
+observables carried by equilibrium_in (Y, NaN where absent) and saves them in the
+run_plasmaless_imas.m results layout (time, Ia, Ie, Y, coil_names, loop_names,
+y_names), same variables as run_plasmaless_imas.m.
 
 Ports: O_I equilibrium_out, pf_active_out (to the actor's F_INIT), voltages_out (to
 pf_active_s); S equilibrium_in, pf_active_in, pf_passive_in (actor's O_I).
@@ -22,6 +23,34 @@ from libmuscle import Instance, Message
 from ymmsl import Operator
 
 TSTART = 0.0  # run_plasmaless_imas.m:17
+# observables vocabulary of imas_model/plasmaless_observables_to_equilibrium.m
+Y_NAMES = ["rmag", "zmag", "rX", "zX", "Ip", "gap1", "gap2", "gap3", "Dist2ndSep"]
+
+
+def _value(node):
+    """Float of a filled IDS scalar, NaN when it is not filled."""
+    return float(node) if node.has_value else np.nan
+
+
+def observables(ts):
+    """Row of Y_NAMES values of one equilibrium time slice (DD4 fields written by
+    plasmaless_observables_to_equilibrium.m): magnetic axis, the first contour_tree
+    node with critical_type 1 (X-point), ip, up to 3 gaps; Dist2ndSep has no DD4 field
+    and is always NaN."""
+    row = np.full(len(Y_NAMES), np.nan)
+    row[0] = _value(ts.global_quantities.magnetic_axis.r)
+    row[1] = _value(ts.global_quantities.magnetic_axis.z)
+    for node in ts.contour_tree.node:
+        if node.critical_type.has_value and int(node.critical_type) == 1:
+            row[2] = _value(node.r)
+            row[3] = _value(node.z)
+            break
+    row[4] = _value(ts.global_quantities.ip)
+    for k, gap in enumerate(ts.boundary.gap):
+        if k >= 3:
+            break
+        row[5 + k] = _value(gap.value)
+    return row
 
 
 def pulse_train(t):
@@ -93,10 +122,14 @@ while inst.reuse_instance():
     inst.send("pf_active_out", Message(TSTART, None, pfa.serialize()))
 
     time, ia, ie = [TSTART], [np.zeros(len(pfa_md.coil))], None
+    y = [observables(eq.time_slice[0])]  # F_INIT values at t0 (ip 0, rest NaN)
     while True:
         msg_eq = inst.receive("equilibrium_in")
         msg_pfa = inst.receive("pf_active_in")
         msg_pfp = inst.receive("pf_passive_in")
+        eq_out = factory.equilibrium()
+        eq_out.deserialize(msg_eq.data)
+        y.append(observables(eq_out.time_slice[0]))
         pfa_out = factory.pf_active()
         pfa_out.deserialize(msg_pfa.data)
         pfp_out = factory.pf_passive()
@@ -128,8 +161,10 @@ while inst.reuse_instance():
             "time": np.array(time),
             "Ia": np.array(ia),
             "Ie": np.array(ie),
+            "Y": np.array(y),
             "coil_names": np.array(coil_names, dtype=object).reshape(1, -1),
             "loop_names": np.array(loop_names, dtype=object).reshape(1, -1),
+            "y_names": np.array(Y_NAMES, dtype=object).reshape(1, -1),
         },
         oned_as="column",
     )

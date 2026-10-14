@@ -29,11 +29,31 @@ do_plot = 1; run_plasmaless_imas    % same, plus plot_plasmaless_model at the en
 run_plasmaless_model     % --> plasmaless_matlab_results.mat
 do_plot = 1; run_plasmaless_model   % same, plus plot_plasmaless_model at the end
 
+# External linear model (linearModelSimple_105073_t84.417598/: linear_model.json + the
+# NICE matrices) instead of the circuit model: set linear_model_dir in the run scripts,
+# or export the environment variable they default to (before starting MATLAB)
+export PLASMALESS_LINEAR_MODEL_DIR=$PWD/linearModelSimple_105073_t84.417598
+run_plasmaless_imas      % --> plasmaless_linear_results.mat (time, Ia, Ie, Y, names), ~40 s;
+                         %     Ia, Y absolute (descriptor operating point + deviation)
+run_plasmaless_model     % --> plasmaless_matlab_linear_results.mat (deviations only)
+do_plot = 1; run_plasmaless_imas    % same, plus plot_plasmaless_linear at the end
+# batch form:
+matlab -singleCompThread -nodisplay -batch "add_plasmaless_paths; run_plasmaless_imas"
+unset PLASMALESS_LINEAR_MODEL_DIR   # back to the circuit model
+# tests of the linear model (same HDF5 note as below: read the MD before runtests)
+matlab -singleCompThread -nodisplay -batch "add_plasmaless_paths; load_plasmaless_md(); runtests('tests/test_plasmaless_linear.m')"
+
 # MUSCLE3 standalone test (muscle3/: voltage_driver.py + actor, dt 0.01, t = 0..28 s,
 # ~3 min on 2 cores; the script loads its own modules, IMAS-MUSCLE3)
 cd muscle3
 ./run_plasmaless_muscle3.sh # --> plasmaless_muscle3_results.mat in the repository root
                             #     (MUSCLE3 logs in /scratch/users/$USER/plasmaless/m3_standalone_<date>)
+# same with the external linear model (absolute path as first argument; setting
+# plasmaless.linear_model_dir) --> plasmaless_muscle3_linear_results.mat. The
+# operating point is the descriptor's (setting plasmaless.operating_point: descriptor,
+# default; f_init = the F_INIT values win, see muscle3/README.md): Ia and the
+# rmag/zmag/Ip columns of Y are absolute values, as in run_plasmaless_imas
+./run_plasmaless_muscle3.sh $PWD/../linearModelSimple_105073_t84.417598
 cd ..
 # in Slurm instead of the login node (from muscle3/, line from the script header):
 srun --partition=all_debug --time=00:30:00 --cpus-per-task=2 --mem=8G ./run_plasmaless_muscle3.sh
