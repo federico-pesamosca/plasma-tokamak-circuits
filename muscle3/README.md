@@ -5,7 +5,7 @@ MUSCLE3 (libmuscle 0.10, Python in-process from MATLAB) actor. It stands in for 
 direct evolutive (`nice_evo_rd`) in controller tests. In IMAS-PDS it is the program
 `plasmaless` (`workflows/lib/local_programs.ymmsl`), used by the workflow
 `plasmaless_controller`; PDS installs this repository into
-`local_installs/plasmaless-tokamak-circuits` with `setup_files/setup_plasmaless.sh`.
+`local_installs/plasma-tokamak-circuits` with `setup_files/setup_plasmaless.sh`.
 
 ## Ports
 
@@ -33,9 +33,19 @@ Flag `KEEPS_NO_STATE_FOR_NEXT_USE`.
   directory holding `linear_model.json` and the matrices of an external linear model
   (`imas_model/configure_linear_model.m`, repository README "External linear model").
   The machine description is still read for the coil names and order.
-- `operating_point` (optional, linear model only, default `descriptor`): which source
-  wins for the operating point, `descriptor` or `f_init` (see below); any other value
-  is the error `plasmaless_actor:settings`.
+- `vertical_equilibrium_uri` (optional, default `''` = not used): IMAS URI or entry
+  directory of an equilibrium with `profiles_2d`; the actor then runs the
+  vertical-instability model (`../vertical_instability/`, repository README
+  "Vertical-instability model"). Setting it together with `linear_model_dir` is the
+  error `plasmaless_actor:settings`.
+- `vertical_equilibrium_time` (optional, default t0): time of that equilibrium.
+- `vertical_passive_currents` (optional, default `equilibrium`): `equilibrium` (the
+  entry's passive currents, error `vertical:passiveCurrents` when it has none) or `zero`.
+- `operating_point` (optional, linear and vertical models, default `descriptor`): which
+  source wins for the operating point, `descriptor` (the model's own reference: the
+  descriptor of a linear model, the equilibrium of the vertical model; the value name is
+  kept for compatibility) or `f_init` (see below); any other value is the error
+  `plasmaless_actor:settings`.
 
 ## External linear model: operating point
 
@@ -69,6 +79,34 @@ magnetic axis, X-point (`contour_tree.node{1}`, `critical_type` 1) and gaps are 
 `boundary.geometric_axis` stays the reference pass-through because the model does not
 give it; `Dist2ndSep` has no DD4 field and is not sent), with an `ids_properties.comment`
 naming the model and the observables it provides.
+
+## Vertical-instability model
+
+States are the deviations from the equilibrium currents `Ic0`; x = 0 at t0. Operating
+point: `op.coil_current` and `op.loop_current` = `Ic0`, `op.y` = Ip0, rc0, zc0 (all
+given by the equilibrium); `op.voltage` is not given (the equilibrium has no voltage
+reference), so with `descriptor` the voltages come from the F_INIT pf_active at t0 and
+du = 0 until the controller changes them. With `f_init` the coil currents and voltages
+(and Ip / `current_centre` when the F_INIT equilibrium has them) come from F_INIT; the
+passive currents always stay the model's. `pf_passive_o_i` has the 102
+machine-description loops. `equilibrium_o_i` carries Ip (`global_quantities.ip`, fixed)
+and the current centre (`global_quantities.current_centre.r` fixed, `.z` = zc0 +
+zIp/Ip0); `boundary.geometric_axis` stays the reference pass-through. The PCS controller
+in PDS reads Ip and the geometric axis, not `current_centre`, and does not command VS1/VS3
+(repository README, Limitations): a closed-loop PDS run with this model diverges until a
+vertical-stabilisation controller is wired. The actor prints the growth rate, Ip0, rc0,
+zc0 and the LCFS source at build time.
+
+Standalone run (2026-10-15): `run_plasmaless_muscle3.sh` with
+`PLASMALESS_VERTICAL_EQUILIBRIUM_URI=/work/projects/pds/pds-scenarios/105073/data/in`,
+`PLASMALESS_VERTICAL_EQUILIBRIUM_TIME=84.4176`, `PLASMALESS_VERTICAL_PASSIVE_CURRENTS=zero`,
+`PLASMALESS_M3_DT=0.001`, `PLASMALESS_M3_T_END=1.0` (the script writes them as
+`plasmaless.vertical_*`, `dt`, `t_interval`, `t_end` into `paths.ymmsl`, which wins over
+`plasmaless_standalone.ymmsl`): exit 0, 1000 exchanges, growth rate 7.6167 1/s; zc stays
+at zc0 = 0.590943 m until the CS3U pulse edge at 0.5 s (-20 V from the F_INIT voltage),
+then moves 0.97 mm by 1.0 s; currents and zc equal a direct `plasmaless_step_ids` loop
+(4e-12 A, 1e-16 m). Results `plasmaless_muscle3_vertical_results.mat`; `Y` has the
+columns `rc`, `zc` in addition (the driver reads `current_centre` too).
 
 ## Timing
 

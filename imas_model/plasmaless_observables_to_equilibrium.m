@@ -1,5 +1,5 @@
 function eq = plasmaless_observables_to_equilibrium(eq, y)
-% write the known observables of a linear model into a one-slice equilibrium IDS
+% write the known observables of a linear or vertical model into a one-slice equilibrium IDS
 % y: struct names/values/known as returned by plasmaless_step_ids (absolute
 %    values); entries with known false are not written
 % DD4 (4.1.x) fields of time_slice{1}:
@@ -7,6 +7,8 @@ function eq = plasmaless_observables_to_equilibrium(eq, y)
 %   rX, zX      contour_tree.node{1}.r / .z with critical_type 1 (saddle =
 %               X-point): DD4 has no boundary_separatrix/x_point any more
 %   Ip          global_quantities.ip
+%   rc, zc      global_quantities.current_centre.r / .z (current centre of
+%               the plasma current distribution, vertical model)
 %   gap<k>      boundary.gap{k}.value, name 'gap<k>' (gap allocated to the largest k)
 %   Dist2ndSep  not written: DD4 removed boundary_secondary_separatrix/
 %               distance_inner_outer without a replacement
@@ -56,6 +58,10 @@ for k = find(known)
             end
         case 'Ip'
             s.global_quantities.ip = v;
+        case 'rc'
+            s.global_quantities.current_centre.r = v;
+        case 'zc'
+            s.global_quantities.current_centre.z = v;
         case 'Dist2ndSep'
             % no DD4 field (see header)
         otherwise

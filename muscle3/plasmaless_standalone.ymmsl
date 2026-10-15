@@ -11,7 +11,7 @@ programs:
   voltage_driver:
     script: |
       #!/bin/bash
-      plasmaless_repo="${PLASMALESS_REPO:-/home/ITER/schneim/public/git/plasmaless-tokamak-circuits}"
+      plasmaless_repo="${PLASMALESS_REPO:-/home/ITER/schneim/public/git/plasma-tokamak-circuits}"
       module purge
       module load IMAS-MUSCLE3/1.0.0-intel-2025b-pds
       exec python -u "$plasmaless_repo/muscle3/voltage_driver.py"
@@ -23,7 +23,7 @@ programs:
   plasmaless:
     script: |
       #!/bin/bash
-      plasmaless_repo="${PLASMALESS_REPO:-/home/ITER/schneim/public/git/plasmaless-tokamak-circuits}"
+      plasmaless_repo="${PLASMALESS_REPO:-/home/ITER/schneim/public/git/plasma-tokamak-circuits}"
       module purge
       module load PCS/2026.08-pds
       module load IMAS-MATLAB/5.6.0-intel-2025b-DD-4.1.1
@@ -75,8 +75,20 @@ settings:
   #     pulse-train voltages at t0 (10 V on CS3U), so op.voltage = u(t0) and the
   #     first pulse is seen as 0 V on CS3U, the later ones (and the end of the
   #     first) as -10 V; Ip is known as 0 (F_INIT ip).
-  # plasmaless.linear_model_dir: "/home/ITER/schneim/public/git/plasmaless-tokamak-circuits/linearModelSimple_105073_t84.417598"
+  # plasmaless.linear_model_dir: "/home/ITER/schneim/public/git/plasma-tokamak-circuits/linearModelSimple_105073_t84.417598"
   # plasmaless.operating_point: descriptor
+  # Vertical-instability model instead (not together with linear_model_dir):
+  # rigid vertical displacement around the equilibrium of an IMAS entry with
+  # profiles_2d; states are deviations from its currents. run_plasmaless_muscle3.sh
+  # adds these settings from PLASMALESS_VERTICAL_EQUILIBRIUM_URI/_TIME and
+  # PLASMALESS_VERTICAL_PASSIVE_CURRENTS (and dt/t_end from PLASMALESS_M3_DT /
+  # PLASMALESS_M3_T_END: the model is open-loop unstable, keep t_end short).
+  # operating_point descriptor = the equilibrium's currents, Ip and current
+  # centre; voltages from F_INIT (no voltage reference in the equilibrium), so
+  # with this driver du = 0 until the first CS3U pulse edge at 0.5 s.
+  # plasmaless.vertical_equilibrium_uri: "imas:hdf5?path=/work/projects/pds/pds-scenarios/105073/data/in"
+  # plasmaless.vertical_equilibrium_time: 84.4176     # default: t0
+  # plasmaless.vertical_passive_currents: zero        # default: equilibrium
 
 resources:
   plasmaless_standalone.driver: {threads: 1}

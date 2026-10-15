@@ -1,7 +1,8 @@
 function [time, Ia, Ie, Y] = simulator_plasmaless_model_imas(TS, model, x0, out_uri)
 % run the plasmaless model step by step through its IMAS interface
 % TS:    timeseries of the coil voltages (nt x n_coils), see timeseries_plasmaless_model.m
-% model: model from configure_plasmaless_model or configure_linear_model
+% model: model from configure_plasmaless_model, configure_linear_model or
+%        configure_vertical_instability_model
 % x0:    initial state (model.n_states x 1)
 % out_uri (optional): IMAS URI where the pf_active/pf_passive output slices are
 %        written (ids_put, then ids_put_slice); nothing is written if omitted or empty
@@ -28,7 +29,7 @@ Ia = zeros(nt,model.n_coils);
 Ie = zeros(nt,model.n_loops);
 Y = zeros(nt,numel(model.y_names));
 Ia(1,:) = (model.op.coil_current + model.x_to_coil*x)';
-Ie(1,:) = (model.x_to_loop*x)';
+Ie(1,:) = (model.op.loop_current + model.x_to_loop*x)';
 Y(1,:) = (model.op.y + model.C_y*x)';
 if write_output
     idx_out = imas_open(out_uri,43);

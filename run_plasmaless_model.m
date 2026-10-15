@@ -1,7 +1,8 @@
 % run simulator_plasmaless.slx (simulink) 
 % or simulator_plasmaless_model_matlab.m (matlab)
 % featuring dynamical plasmaless coil-vessel circuit model
-% (or an external linear model, see linear_model_dir) and plot the results
+% (or an external linear model, see linear_model_dir, or the vertical-instability
+% model, see vertical_uri) and plot the results
 
 clearvars -except do_plot
 % plot at the end (set do_plot = 1 before calling to enable). Default 0:
@@ -21,10 +22,35 @@ dt = 0.001;
 % 'linearModelSimple_105073_t84.417598'). Default: the environment variable
 % PLASMALESS_LINEAR_MODEL_DIR when set, else ''.
 linear_model_dir = getenv('PLASMALESS_LINEAR_MODEL_DIR');
+% Vertical-instability model (vertical_instability/, rigid vertical displacement
+% around an equilibrium, states = deviations from its currents): set
+% vertical_uri to an IMAS URI or entry directory with an equilibrium holding
+% profiles_2d. Defaults: the environment variables PLASMALESS_VERTICAL_EQUILIBRIUM_URI
+% (else '' = not used), PLASMALESS_VERTICAL_EQUILIBRIUM_TIME (else the extractor's
+% default time) and PLASMALESS_VERTICAL_PASSIVE_CURRENTS ('equilibrium' or 'zero',
+% else 'equilibrium'). The model is open-loop unstable (growth rate a few 1/s):
+% the pulse train makes it diverge, shorten tend to look at it.
+vertical_uri = getenv('PLASMALESS_VERTICAL_EQUILIBRIUM_URI');
+vertical_time = str2double(getenv('PLASMALESS_VERTICAL_EQUILIBRIUM_TIME'));   % NaN when unset
+vertical_passive = getenv('PLASMALESS_VERTICAL_PASSIVE_CURRENTS');
+if isempty(vertical_passive), vertical_passive = 'equilibrium'; end
+if ~isempty(linear_model_dir) && ~isempty(vertical_uri)
+    error('plasmaless:model','Set either the linear model directory or the vertical equilibrium URI, not both.');
+end
+if ~isempty(getenv('PLASMALESS_VERTICAL_EQUILIBRIUM_TIME')) && isnan(vertical_time)
+    error('plasmaless:model','PLASMALESS_VERTICAL_EQUILIBRIUM_TIME is not a number.');
+end
+if isnan(vertical_time), vertical_time = []; end
 
 %% load model (DD4 machine description in data/md_dd4)
 [em_coupling,pf_active,pf_passive] = load_plasmaless_md();
-if isempty(linear_model_dir)
+if ~isempty(vertical_uri)
+    % the outputs are deviations from the equilibrium currents (no op offsets)
+    eq_vertical = extract_equilibrium_data(vertical_uri, vertical_time, ...
+        struct('passive_currents',vertical_passive,'pf_passive_md',pf_passive));
+    [model,x0] = configure_vertical_instability_model(dt,eq_vertical,em_coupling,pf_active,pf_passive);
+    results_file = fullfile(fileparts(mfilename('fullpath')),'plasmaless_matlab_vertical_results.mat');
+elseif isempty(linear_model_dir)
     [model,x0] = configure_plasmaless_model(em_coupling,pf_active,pf_passive,dt);
     results_file = fullfile(fileparts(mfilename('fullpath')),'plasmaless_matlab_results.mat');
 else

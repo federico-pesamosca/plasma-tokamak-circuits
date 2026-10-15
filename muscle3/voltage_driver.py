@@ -24,7 +24,7 @@ from ymmsl import Operator
 
 TSTART = 0.0  # run_plasmaless_imas.m:17
 # observables vocabulary of imas_model/plasmaless_observables_to_equilibrium.m
-Y_NAMES = ["rmag", "zmag", "rX", "zX", "Ip", "gap1", "gap2", "gap3", "Dist2ndSep"]
+Y_NAMES = ["rmag", "zmag", "rX", "zX", "Ip", "gap1", "gap2", "gap3", "Dist2ndSep", "rc", "zc"]
 
 
 def _value(node):
@@ -35,8 +35,8 @@ def _value(node):
 def observables(ts):
     """Row of Y_NAMES values of one equilibrium time slice (DD4 fields written by
     plasmaless_observables_to_equilibrium.m): magnetic axis, the first contour_tree
-    node with critical_type 1 (X-point), ip, up to 3 gaps; Dist2ndSep has no DD4 field
-    and is always NaN."""
+    node with critical_type 1 (X-point), ip, up to 3 gaps, current centre r/z
+    (vertical model); Dist2ndSep has no DD4 field and is always NaN."""
     row = np.full(len(Y_NAMES), np.nan)
     row[0] = _value(ts.global_quantities.magnetic_axis.r)
     row[1] = _value(ts.global_quantities.magnetic_axis.z)
@@ -50,6 +50,8 @@ def observables(ts):
         if k >= 3:
             break
         row[5 + k] = _value(gap.value)
+    row[9] = _value(ts.global_quantities.current_centre.r)
+    row[10] = _value(ts.global_quantities.current_centre.z)
     return row
 
 

@@ -1,15 +1,18 @@
 function [pf_active_out, pf_passive_out, x_new, y_out] = plasmaless_step_ids(model, pf_active_in, x)
 % one time step of the plasmaless model (as plasmaless_timestep.slx)
-% model:        from configure_plasmaless_model (circuit) or configure_linear_model
+% model:        from configure_plasmaless_model (circuit), configure_linear_model
+%               or configure_vertical_instability_model (vertical)
 % pf_active_in: one slice (homogeneous_time 1) with the coil voltages u at t
 % x:            state at t (model.n_states x 1)
 % Step: du = u - op.voltage; x_new = A*x + B*du; the outputs at t+dt are
 %   coil currents  op.coil_current + x_to_coil*x_new   (pf_active_out; the input
 %                  voltages are echoed, they are applied over [t, t+dt])
-%   loop currents  x_to_loop*x_new                     (pf_passive_out)
+%   loop currents  op.loop_current + x_to_loop*x_new   (pf_passive_out)
 %   observables    op.y + C_y*x_new                    (y_out: names, values, known)
 % For the circuit model op is zero and y_out is empty; for a linear model the
-% states are deviations from the linearisation point op.
+% states are deviations from the linearisation point op; for the vertical
+% model they are deviations from the equilibrium currents (op.coil_current,
+% op.loop_current) and y_out holds Ip, rc, zc.
 
 if pf_active_in.ids_properties.homogeneous_time ~= 1 || numel(pf_active_in.time) ~= 1
     error('plasmaless:slice', ['pf_active input must have homogeneous_time 1 and ', ...
@@ -38,7 +41,7 @@ end
 du = u - model.op.voltage;
 [~,x_new] = plasmaless_timestep_forward(du,x,model.A,model.B,model.C,model.D);
 i_coil = model.op.coil_current + model.x_to_coil*x_new;
-i_loop = model.x_to_loop*x_new;
+i_loop = model.op.loop_current + model.x_to_loop*x_new;
 y_out.names = model.y_names;
 y_out.values = model.op.y + model.C_y*x_new;
 y_out.known = model.op.y_known;
@@ -78,6 +81,8 @@ switch model.kind
         label = 'plasmaless coil-vessel model';
     case 'linear'
         label = ['plasmaless linear model (' model.source.description ')'];
+    case 'vertical'
+        label = ['plasmaless vertical-instability model (' model.source.description ')'];
     otherwise
         error('plasmaless:model','Unknown model kind ''%s''.', model.kind);
 end

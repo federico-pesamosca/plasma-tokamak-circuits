@@ -20,8 +20,18 @@ function muscle_plasmaless_actor()
 % (optional, default: data/md_dd4 of this repository); linear_model_dir
 % (optional, default '' = circuit model): directory of an external linear
 % model (linear_model.json + matrices, imas_model/configure_linear_model.m);
-% operating_point (optional, linear model only): 'descriptor' (default) or
-% 'f_init', which of the two sources wins for the operating point.
+% vertical_equilibrium_uri (optional, default '' = not used): IMAS URI (or
+% entry directory) of an equilibrium with profiles_2d; the actor then runs
+% the vertical-instability model (vertical_instability/, rigid vertical
+% displacement around that equilibrium); vertical_equilibrium_time
+% (optional, default t0) and vertical_passive_currents (optional,
+% 'equilibrium' (default): passive currents of the entry, error when absent;
+% 'zero': assumed zero) select its slice and passive currents. Setting both
+% linear_model_dir and vertical_equilibrium_uri is an error.
+% operating_point (optional, linear and vertical models): 'descriptor'
+% (default) or 'f_init', which of the two sources wins for the operating
+% point; 'descriptor' means the model's own reference (the descriptor of a
+% linear model, the loaded equilibrium of the vertical model).
 %
 % Linear model: its states, inputs and outputs are deviations from its
 % linearisation point. The run starts at t0 with x = 0 and the operating
@@ -44,6 +54,17 @@ function muscle_plasmaless_actor()
 % pass-through because the model does not give it. pf_passive_o_i has one
 % loop per passive state.
 %
+% Vertical model: states are deviations [dIa; dIe] from the equilibrium
+% currents Ic0; op.coil_current/op.loop_current = Ic0 (given), op.voltage = 0
+% not given (the equilibrium has no voltage reference, so 'descriptor' takes
+% the F_INIT voltages at t0 and du = 0 until the controller changes them);
+% observables Ip (fixed), rc (fixed, no radial motion), zc = zc0 + zIp/Ip0,
+% written to global_quantities.ip and global_quantities.current_centre.r/z
+% of equilibrium_o_i. boundary.geometric_axis stays the reference
+% pass-through: the PCS controller in PDS reads Ip and the geometric axis,
+% not current_centre, so it does not see the vertical displacement.
+% pf_passive_o_i has the 102 machine-description loops (Ic0 + deviation).
+%
 % Timing mirrors nice_imas_evo_rd_muscle3 (NICE 3.0.0.dev446,
 % main_imas_evo_rd_muscle3.cc): t0 = timestamp of equilibrium_f_init (cc:146),
 % F_INIT pf_active sliced at t0 with the closest sample (cc:156); the first
@@ -58,6 +79,7 @@ function muscle_plasmaless_actor()
 repo_root = fileparts(fileparts(mfilename('fullpath')));
 addpath(repo_root);
 addpath(fullfile(repo_root,'imas_model'));
+addpath(fullfile(repo_root,'vertical_instability'));
 
 ports = py.dict();
 ports{py.getattr(@py.ymmsl.Operator,"F_INIT")} = py.list({"equilibrium_f_init", "pf_active_f_init"});
@@ -91,7 +113,16 @@ md_uri = char(instance.get_setting('md_uri', pyargs('default', ['imas:hdf5?path=
     fullfile(fileparts(fileparts(mfilename('fullpath'))),'data','md_dd4')])));
 % '' = circuit model from the machine description; otherwise an external linear model
 linear_model_dir = char(instance.get_setting('linear_model_dir', pyargs('default', '')));
-% which source wins for the operating point of a linear model
+% '' = not used; otherwise the equilibrium of the vertical-instability model
+vertical_uri = char(instance.get_setting('vertical_equilibrium_uri', pyargs('default', '')));
+% '' (default) = t0; a py.str default lets an unset setting be told from a float
+vertical_time_setting = instance.get_setting('vertical_equilibrium_time', pyargs('default', ''));
+vertical_passive = char(instance.get_setting('vertical_passive_currents', pyargs('default', 'equilibrium')));
+if ~isempty(linear_model_dir) && ~isempty(vertical_uri)
+    error('plasmaless_actor:settings', ['linear_model_dir and vertical_equilibrium_uri ', ...
+        'are both set; choose one model.']);
+end
+% which source wins for the operating point of a linear or vertical model
 op_source = char(instance.get_setting('operating_point', pyargs('default', 'descriptor')));
 if ~any(strcmp(op_source, {'descriptor','f_init'}))
     error('plasmaless_actor:settings','operating_point must be ''descriptor'' or ''f_init'' (got ''%s'').', op_source);
@@ -123,11 +154,11 @@ if t0 < eq_time(1) || t_end > eq_time(end)
 end
 
 % machine description and model (the linear model only needs pf_active, for
-% the coil names and order)
+% the coil names and order; the vertical model needs the whole description)
 fprintf('muscle_plasmaless_actor: loading machine description from %s\n', md_uri);
 idx = imas_open(md_uri,40);
 pf_active_md = ids_get(idx,'pf_active');
-if isempty(linear_model_dir)
+if isempty(linear_model_dir)   % circuit or vertical model
     em_coupling = ids_get(idx,'em_coupling');
     pf_passive_md = ids_get(idx,'pf_passive');
 end
@@ -147,7 +178,28 @@ end
 coil_names = model_coil_names(pf_active_md);
 
 pfa_t0 = closest_slice(pfa_init, t0, coil_names);
-if isempty(linear_model_dir)
+if ~isempty(vertical_uri)
+    % vertical model: x = 0 (deviations from the equilibrium currents Ic0),
+    % operating point from the equilibrium entry and the F_INIT data at t0
+    if isa(vertical_time_setting,'py.str') && strlength(string(vertical_time_setting)) == 0
+        vertical_time = t0;
+    else
+        vertical_time = double(vertical_time_setting);
+    end
+    fprintf('muscle_plasmaless_actor: vertical model, equilibrium %s at t = %.10g, passive currents ''%s''\n', ...
+        vertical_uri, vertical_time, vertical_passive);
+    eq_vertical = extract_equilibrium_data(vertical_uri, vertical_time, ...
+        struct('passive_currents',vertical_passive,'pf_passive_md',pf_passive_md));
+    [model, x] = configure_vertical_instability_model(dt, eq_vertical, em_coupling, ...
+        pf_active_md, pf_passive_md);
+    model = model_operating_point(model, pfa_t0, eq_ref, eq_time, t0, op_source);
+    fprintf(['muscle_plasmaless_actor: vertical model: growth rate %.6g 1/s, Ip0 %.6g A, ', ...
+        'rc0 %.6g m, zc0 %.6g m, LCFS: %s\n'], max(real(eig(model.Ac))), model.Ip0, ...
+        model.rc0, model.zc0, eq_vertical.boundary_source);
+    eq_comment = sprintf(['plasmaless vertical-instability model (%s): %s from the model ', ...
+        '(current_centre), boundary geometric axis = reference pass-through'], ...
+        model.source.description, strjoin(model.y_names(model.op.y_known),'/'));
+elseif isempty(linear_model_dir)
     % ASSUMPTION: the vessel (pf_passive loop) currents are zero at t0. The
     % scenario data carried by the workflow has no passive-structure currents, so
     % there is no source for them; this is a modelling assumption, not a default
@@ -167,7 +219,7 @@ else
     % and the F_INIT data at t0 (setting operating_point says which wins)
     fprintf('muscle_plasmaless_actor: linear model from %s\n', linear_model_dir);
     [model, x] = configure_linear_model(linear_model_dir, dt, pf_active_md);
-    model = linear_operating_point(model, pfa_t0, eq_ref, eq_time, t0, op_source);
+    model = model_operating_point(model, pfa_t0, eq_ref, eq_time, t0, op_source);
     eq_comment = sprintf(['plasmaless linear model (%s): %s from the model, ', ...
         'boundary geometric axis = reference pass-through'], model.source.description, ...
         strjoin(model.y_names(model.op.y_known),'/'));
@@ -183,10 +235,10 @@ while true
     [pfa_out, pfp_out, x, y_out] = plasmaless_step_ids(model, pfa_in, x);
     t = pfa_out.time;      % = t + dt
     eq_out = reference_equilibrium(t, eq_time, ip_ref, r_ref, z_ref);
-    if strcmp(model.kind,'linear')
+    if ~strcmp(model.kind,'circuit')
         % known observables of the model (absolute values): a known Ip overrides
-        % the pass-through ip; magnetic axis, X-point and gaps are added;
-        % boundary.geometric_axis stays the reference (the model does not give it)
+        % the pass-through ip; magnetic axis, X-point, gaps and current centre are
+        % added; boundary.geometric_axis stays the reference (the model does not give it)
         eq_out = plasmaless_observables_to_equilibrium(eq_out, y_out);
         eq_out.ids_properties.comment = eq_comment;
     end
@@ -293,12 +345,14 @@ eq.time_slice{1}.boundary.geometric_axis.z = vals(3);
 eq.code.output_flag = 0;
 end
 
-function model = linear_operating_point(model, pfa_t0, eq_ref, eq_time, t0, op_source)
-% operating point of a linear model: descriptor entries (model.op, *_given /
-% y_known flags) and the F_INIT data at t0 (coil currents and voltages of the
+function model = model_operating_point(model, pfa_t0, eq_ref, eq_time, t0, op_source)
+% operating point of a linear or vertical model: the model's reference
+% (model.op with its *_given / y_known flags: the descriptor of a linear
+% model, the equilibrium of the vertical model) and the F_INIT data at t0 (coil currents and voltages of the
 % pf_active slice pfa_t0 in model coil order, observables of the equilibrium
-% slice closest to t0). op_source 'descriptor': descriptor entries win, F_INIT
-% fills the rest; 'f_init': F_INIT values win, descriptor entries fill the rest
+% slice closest to t0). op_source 'descriptor': model reference entries win,
+% F_INIT fills the rest; 'f_init': F_INIT values win, the model reference fills
+% the rest. Passive currents (op.loop_current) always stay the model's.
 f_init_wins = strcmp(op_source,'f_init');
 n_cur = 0; n_volt = 0;    % coil entries taken from F_INIT
 for ii = 1:model.n_coils
@@ -324,7 +378,7 @@ end
 model.op.y(from_eq) = vals(from_eq);
 model.op.y_known = model.op.y_known | known;
 fprintf(['muscle_plasmaless_actor: operating point at t0 = %.10g (setting operating_point = %s): ', ...
-    '%d/%d coil currents/voltages from F_INIT pf_active, the others from the descriptor; ', ...
+    '%d/%d coil currents/voltages from F_INIT pf_active, the others from the model reference; ', ...
     'observables from the F_INIT equilibrium slice t = %.10g: {%s}; sent as absolute values: {%s}; ', ...
     'not sent (unknown): {%s}\n'], t0, op_source, n_cur, n_volt, eq_time(k), ...
     strjoin(model.y_names(from_eq),','), strjoin(model.y_names(model.op.y_known),','), ...

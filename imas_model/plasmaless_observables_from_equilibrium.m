@@ -21,6 +21,10 @@ for k = 1:numel(names)
             v = x_point(slice,'z');
         case 'Ip'
             v = get_path(slice,{'global_quantities','ip'});
+        case 'rc'
+            v = get_path(slice,{'global_quantities','current_centre','r'});
+        case 'zc'
+            v = get_path(slice,{'global_quantities','current_centre','z'});
         case 'Dist2ndSep'
             v = [];
         otherwise

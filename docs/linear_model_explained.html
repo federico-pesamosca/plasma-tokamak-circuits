@@ -1,0 +1,1125 @@
+<title>Linearised Model Explained</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (65ch), tables and figures may widen inside
+   their own scrolling boxes; a quiet technical-report treatment. */
+:root {
+  --bg: #f6f7f8;
+  --surface: #ffffff;
+  --fg: #1c2229;
+  --fg-2: #4f5962;
+  --muted: #7a8590;
+  --rule: #d6dbe0;
+  --rule-strong: #aeb7bf;
+  --accent: #1f5f8b;
+  --accent-soft: #e3edf5;
+  --plasma: #c2571a;
+  --plasma-soft: #f8e7dc;
+  --code-bg: #eef1f4;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15191d; --surface: #1d2227; --fg: #e6eaee; --fg-2: #b4bcc4;
+    --muted: #8a949d; --rule: #323a42; --rule-strong: #4a545d;
+    --accent: #7fb3dc; --accent-soft: #223544; --plasma: #e8894f;
+    --plasma-soft: #3e2a1e; --code-bg: #252b31; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15191d; --surface: #1d2227; --fg: #e6eaee; --fg-2: #b4bcc4;
+  --muted: #8a949d; --rule: #323a42; --rule-strong: #4a545d;
+  --accent: #7fb3dc; --accent-soft: #223544; --plasma: #e8894f;
+  --plasma-soft: #3e2a1e; --code-bg: #252b31; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.55;
+  margin: 0;
+}
+.page {
+  max-width: 880px; margin: 0 auto;
+  padding-inline: 16px; padding-block: 2.5rem 4rem;
+}
+@media (min-width: 700px) { .page { padding-inline: 32px; } }
+header.top { border-bottom: 1px solid var(--rule-strong); padding-bottom: 1.2rem; margin-bottom: 2rem; }
+.eyebrow { font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 .5rem; }
+h1 { font-size: 1.9rem; font-weight: 600; line-height: 1.2; margin: 0 0 .8rem; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-size: 1.3rem; font-weight: 600; margin: 2.8rem 0 .8rem; padding-top: .4rem; border-top: 1px solid var(--rule); text-wrap: balance; }
+h3 { font-size: 1.02rem; font-weight: 600; margin: 1.6rem 0 .5rem; }
+p, li { max-width: 65ch; }
+p { margin: 0 0 .9rem; }
+ul, ol { padding-left: 1.3rem; margin: 0 0 1rem; }
+li { margin-bottom: .35rem; }
+.lede { font-size: 1.08rem; color: var(--fg-2); max-width: 65ch; }
+code, .mono { font-family: var(--font-mono); font-size: .88em; }
+code { background: var(--code-bg); padding: .08em .3em; border-radius: 3px; }
+.eq {
+  font-family: var(--font-mono); font-size: .95rem; background: var(--code-bg);
+  padding: .7rem 1rem; border-radius: 4px; margin: .6rem 0 1rem; overflow-x: auto;
+  max-width: 100%; box-sizing: border-box; white-space: nowrap;
+}
+.eq span.c { color: var(--muted); }
+dl.terms { max-width: 65ch; margin: 0 0 1rem; display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; }
+dl.terms dt { font-weight: 600; }
+dl.terms dd { margin: 0; }
+@media (max-width: 480px) { dl.terms { grid-template-columns: 1fr; } dl.terms dd { margin-bottom: .4rem; } }
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  padding: .7rem 1rem; margin: 1rem 0 1.2rem; max-width: 65ch; border-radius: 0 4px 4px 0;
+}
+.callout.plasma { border-left-color: var(--plasma); background: var(--plasma-soft); }
+.callout p:last-child { margin-bottom: 0; }
+.callout .lbl { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: .25rem; }
+.tbl { overflow-x: auto; margin: .8rem 0 1.4rem; max-width: 100%; }
+table { border-collapse: collapse; font-size: .9rem; min-width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .6rem; border-bottom: 1px solid var(--rule); }
+th { font-weight: 600; color: var(--fg-2); font-size: .82rem; letter-spacing: .03em; text-transform: uppercase; border-bottom: 1px solid var(--rule-strong); }
+td.num, th.num { text-align: right; white-space: nowrap; }
+td.k { font-weight: 500; white-space: nowrap; }
+tr.hl td { background: var(--plasma-soft); }
+figure { margin: 1.2rem 0 1.6rem; max-width: 100%; }
+figure .fig { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: .6rem; }
+figure svg { max-width: 100%; height: auto; display: block; margin: 0 auto; color: var(--fg); }
+figcaption { font-size: .86rem; color: var(--fg-2); margin-top: .5rem; max-width: 65ch; }
+.file { font-family: var(--font-mono); font-size: .85em; }
+.small { font-size: .86rem; color: var(--fg-2); }
+.status { display: inline-block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; padding: .05em .45em; border-radius: 3px; border: 1px solid var(--rule-strong); color: var(--fg-2); vertical-align: middle; }
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-size: .84rem; color: var(--muted); }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="page">
+<header class="top">
+  <p class="eyebrow">plasma-tokamak-circuits &middot; technical note &middot; 2026-10-15</p>
+  <h1>The linearised NICE model, explained for developers</h1>
+  <p class="lede">This page explains what the "linearised model" recently wrapped
+  into this repository is, why a different set of matrices is a different
+  model, and why this one belongs to one pulse at one time. It also answers
+  whether the same scripts run it and what the IMAS-PDS integration needs.
+  Section 10 adds a third model of the same code: the vertical-instability
+  model, where the plasma can move up and down.</p>
+</header>
+
+<h2 id="matrix">1. A matrix is a model</h2>
+<p>Both models in this repository are <strong>state-space models</strong>.
+That is a standard way to write a system whose future depends only on its
+present. Three ingredients:</p>
+<dl class="terms">
+  <dt>state x</dt><dd>the list of numbers that fully describe the system
+  right now. Here: electric currents, in amperes.</dd>
+  <dt>input u</dt><dd>what we can push on from outside. Here: coil voltages,
+  in volts, set by a controller.</dd>
+  <dt>output y</dt><dd>what we want to read off. Here: either the currents
+  themselves, or plasma quantities computed from them.</dd>
+</dl>
+<p>The model itself is two linear equations:</p>
+<div class="eq">dx/dt = A x + B u &nbsp;&nbsp;<span class="c">(how the currents change)</span><br>y = C x &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c">(what we observe)</span></div>
+<p>"dx/dt" means the rate of change of x, in amperes per second.
+A, B and C are matrices, which here means <em>coupling tables</em>:</p>
+<div class="tbl"><table>
+<tr><th>Matrix</th><th>Size</th><th>Reads as</th></tr>
+<tr><td class="k">A</td><td>states &times; states</td><td>How much each current pushes on the rate of
+change of every other current (and of itself). Entry A(i,j): one ampere in
+state j changes state i by A(i,j) amperes per second.</td></tr>
+<tr><td class="k">B</td><td>states &times; inputs</td><td>How much each volt on each input
+pushes the currents. Entry B(i,k): one volt on input k changes state i by
+B(i,k) amperes per second.</td></tr>
+<tr><td class="k">C</td><td>outputs &times; states</td><td>Which combination of currents gives
+each observable. A row of C is a recipe for one output.</td></tr>
+</table></div>
+<h3>Reading rules for the delivered files</h3>
+<p>Each matrix has its own one-line rule. The sizes are those of the
+NICE model; the circuit model follows the same rules with 116 states.</p>
+<ul>
+  <li><strong>A</strong> (17&times;17, unit 1/s). Entry (i,&nbsp;j): how
+  much the current j, in amperes, changes the rate of change of current
+  i, in amperes per second. The diagonal is the self decay rate of each
+  current (negative, or zero for a lossless loop). The off-diagonal
+  entries are couplings: through mutual inductance, and through the
+  plasma.</li>
+  <li><strong>B</strong> (17&times;14, unit A/s per V). Entry (i,&nbsp;j):
+  how fast current i starts to change when 1 V is applied on generator
+  j.</li>
+  <li><strong>C</strong> (9&times;17, unit of the observable per A).
+  Entry (k,&nbsp;i): how much observable k moves per ampere of deviation
+  of current i. The zmag row is in m/A, the Ip row in A/A.</li>
+</ul>
+<p class="small">How to read them in the files: rows are states (A, B)
+or outputs (C); columns are states (A, C) or inputs (B). The descriptor
+<span class="file">linear_model.json</span> names every row and column
+(<code>states</code>, <code>inputs</code>, <code>outputs</code>), in
+file order.</p>
+<p>The computer cannot step continuously in time, so the code converts
+the model once into a step form for the simulation step dt
+(MATLAB <code>c2d</code>, zero-order hold: the voltage is held constant
+during the step):</p>
+<div class="eq">x(t + dt) = Ad x(t) + Bd u(t)</div>
+<p>That single line is the whole simulation. Every time step is one
+matrix-vector product (<span class="file">plasmaless_timestep_forward.m</span>:
+<code>xnew = A*x + B*u</code>). There is no other physics in the loop.
+Everything the model knows is in the numbers of A, B and C.</p>
+<div class="callout"><span class="lbl">The point</span>
+<p>Different numbers = different physics. Swapping the matrices does not
+tune a model; it replaces it. The code around them is just a loop that
+multiplies.</p></div>
+
+<h2 id="two">2. Two models, one code</h2>
+<p>The repository now holds two models of this form. The first one it
+computes itself. The second one it reads from files.</p>
+<div class="tbl"><table>
+<tr><th></th><th>Circuit model ("plasmaless")</th><th>NICE linearised model</th></tr>
+<tr><td class="k">Where A, B, C come from</td>
+<td>Computed by <span class="file">configure_plasmaless_model.m</span> from the
+machine description in <span class="file">data/md_dd4</span>: mutual
+inductances M and resistances R. A = &minus;M<sup>&minus;1</sup>R,
+B = M<sup>&minus;1</sup> (coil columns), C = identity.</td>
+<td>Delivered by the model provider as three files
+(A 17&times;17, B 17&times;14, C 9&times;17), produced by the NICE
+free-boundary equilibrium code. Read by
+<span class="file">configure_linear_model.m</span>.</td></tr>
+<tr><td class="k">States x</td>
+<td>116 currents: 14 coils (CS3U, CS2U, CS1U, CS1L, CS2L, CS3L, PF1..PF6,
+VS3U, VS3L) and 102 passive conductor loops (vessel and structures).</td>
+<td>17 currents: 11 coil circuits (CS1U and CS1L in series count as one
+"CS1"), VS3 and &minus;VS3 (the anti-series VS3U/VS3L pair, two states),
+2 lumped passive-structure currents (PS), 2 lumped vacuum-vessel currents
+(VV).</td></tr>
+<tr><td class="k">Inputs u</td>
+<td>14 coil voltages, one per coil.</td>
+<td>14 generator voltages (CS3U, CS2U, CS1U, CS1L, CS2L, CS3L, PF1..PF5,
+VS1, PF6, VS3). VS1 is a converter in series with PF2..PF5 and has no coil
+of its own; VS3 is one voltage for the anti-series pair.</td></tr>
+<tr><td class="k">Outputs y</td>
+<td>The 116 currents themselves (C = identity).</td>
+<td>9 plasma observables: magnetic axis rmag, zmag; X-point rX, zX;
+plasma current Ip; three gaps; distance to the second separatrix.</td></tr>
+<tr><td class="k">Plasma</td>
+<td>None. Conductors only.</td>
+<td>Included, folded into the numbers (section 3).</td></tr>
+<tr><td class="k">Meaning of x = 0</td>
+<td>All currents are zero.</td>
+<td>All currents equal the equilibrium of pulse 105073 at
+t = 84.4176 s (a "deviation" model, section 4).</td></tr>
+<tr><td class="k">Valid for</td>
+<td>Any pulse, any time: geometry and resistances do not change.</td>
+<td>Small deviations around one equilibrium of one pulse at one time.</td></tr>
+<tr><td class="k">Files</td>
+<td><span class="file">data/md_dd4/*.h5</span></td>
+<td><span class="file">linearModelSimple_105073_t84.417598/</span>:
+<span class="file">linModSimpleA/B/C.npy</span> (+ .txt copies),
+<span class="file">linModOrder.txt</span>,
+<span class="file">linear_model.json</span>. The provider labelled the
+delivery 105078; the data are those of pulse 105073, which the user
+confirmed on 2026-10-14, and the directory name was updated accordingly
+(section 4).</td></tr>
+</table></div>
+<p>A note on the circuit model, for completeness. Its physics is the
+circuit law M&nbsp;dI/dt + R&nbsp;I = V. M is the mutual-inductance
+matrix: how a changing current in one conductor induces a voltage in
+another. It depends on the machine geometry only. R holds the
+resistances: zero for the superconducting coils, nonzero for VS3 and the
+vessel. V is the applied voltage. Rearranged, that law is exactly
+dx/dt = A x + B u with the A and B given in the table.</p>
+<p>A third model, the vertical-instability model, adds a rigid plasma
+that can move up or down to the circuit model. Section 10 explains
+it.</p>
+
+<h2 id="plasma">3. Why the plasma makes it scenario- and time-specific</h2>
+<p>NICE solves the <strong>free-boundary equilibrium</strong>: given the
+coil and vessel currents, it finds where the plasma sits, what shape it
+has and how its current is distributed. The plasma reacts to the coil
+currents instantly (on the time scales that matter here). So "coil
+currents in, plasma position out" is a function, and that function is
+strongly non-linear: move the coils a little and the plasma may move a
+lot, or change shape.</p>
+<p><strong>Linearising</strong> means: take that non-linear relation at
+one working point, the equilibrium at 84.4176 s, and keep only its
+slope (the tangent) there. A straight line is easy to put into a
+matrix. But a tangent is only a good stand-in for the curve close to
+the point where it was taken.</p>
+
+<figure>
+<div class="fig">
+<svg viewBox="0 0 560 300" role="img" aria-label="A curved response of the plasma to coil currents, with its tangent line at one operating point; the tangent matches the curve only in a shaded region around that point and departs from it further away." width="560" height="300">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <!-- valid region -->
+  <rect x="205" y="40" width="130" height="200" fill="var(--accent-soft)" stroke="none"/>
+  <text x="270" y="30" font-size="12" text-anchor="middle" fill="var(--accent)">valid region (small deviations)</text>
+  <!-- axes -->
+  <line x1="60" y1="240" x2="520" y2="240" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="60" y1="240" x2="60" y2="30" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr)"/>
+  <text x="520" y="262" font-size="12" text-anchor="end" fill="currentColor">coil currents</text>
+  <text x="66" y="42" font-size="12" text-anchor="start" fill="currentColor">plasma response (position, shape, Ip)</text>
+  <!-- nonlinear curve (true relation) -->
+  <path d="M 70 225 Q 180 220 270 150 Q 360 80 500 60" fill="none" stroke="var(--plasma)" stroke-width="2.5"/>
+  <text x="498" y="50" font-size="12" text-anchor="end" fill="var(--plasma)">true relation (NICE, non-linear)</text>
+  <!-- tangent -->
+  <line x1="130" y1="257" x2="420" y2="36" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="365" y="98" font-size="12" text-anchor="start" fill="var(--accent)">tangent = A, B, C</text>
+  <!-- operating point -->
+  <circle cx="270" cy="150" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>
+  <text x="270" y="172" font-size="12" text-anchor="middle" fill="currentColor">operating point</text>
+  <text x="270" y="186" font-size="11" text-anchor="middle" fill="var(--fg-2)">105073, t = 84.4176 s</text>
+  <!-- other scenario -->
+  <circle cx="440" cy="72" r="4" fill="var(--plasma)"/>
+  <text x="440" y="92" font-size="11" text-anchor="middle" fill="var(--fg-2)">another time or pulse:</text>
+  <text x="440" y="105" font-size="11" text-anchor="middle" fill="var(--fg-2)">different slope</text>
+</svg>
+</div>
+<figcaption>The matrices are the slope of the plasma response at one
+equilibrium. Near that point the line and the curve agree; far away they
+do not, and another point has a different slope.</figcaption>
+</figure>
+
+<h3>What changes between scenarios and time slices, and what does not</h3>
+<ul>
+  <li><strong>Does not change:</strong> the conductor part. Mutual
+  inductances and resistances come from the machine geometry. That is
+  why the circuit model is valid for every pulse.</li>
+  <li><strong>Changes:</strong> the plasma part. The slope depends on
+  where the plasma is, its shape, its current and its profile. A
+  different pulse, or a different time in the same pulse (the plasma
+  grows, moves, Ip ramps), gives different numbers in A, B and C.</li>
+  <li><strong>Exists only with plasma:</strong> the C matrix. Without a
+  plasma there is no magnetic axis, X-point, gap or Ip to observe.</li>
+</ul>
+<p>This is why one matrix set per (pulse, time) is needed, and why the
+matrices are an <em>input</em> of this code, not something it computes.</p>
+
+<h3>Numerical evidence from the delivered matrices</h3>
+<p>Comparing the NICE matrices with the circuit model (done 2026-10-13
+and 14) shows the conductor part agreeing and the plasma part showing
+up as the difference:</p>
+<div class="tbl"><table>
+<tr><th>Quantity</th><th class="num">NICE model</th><th class="num">Circuit model</th><th>Reading</th></tr>
+<tr><td class="k">Self term CS3U (A/s per V)</td><td class="num">1.52</td><td class="num">1.55</td><td rowspan="3">Agree: the coil's own inductance is pure geometry.</td></tr>
+<tr><td class="k">Self term PF2 (A/s per V)</td><td class="num">2.81</td><td class="num">2.84</td></tr>
+<tr><td class="k">Self term PF6 (A/s per V)</td><td class="num">0.49</td><td class="num">0.53</td></tr>
+<tr><td class="k">Neighbour couplings</td><td class="num" colspan="2">same sign, within about 10 %</td><td>Agree: geometry again.</td></tr>
+<tr class="hl"><td class="k">One volt on VS3 &rarr; CS/PF currents</td><td class="num">&minus;3 to &minus;11 A/s</td><td class="num">about 0</td><td>This difference <em>is</em> the plasma: the VS3 field moves the plasma, and the moving plasma induces currents in the other coils.</td></tr>
+<tr class="hl"><td class="k">Slow mode</td><td class="num">12 s</td><td class="num">none</td><td>A plasma-driven time scale absent from the conductors alone.</td></tr>
+<tr><td class="k">Fastest vessel mode</td><td class="num">14 ms</td><td class="num">4.7 ms</td><td>The 102 vessel loops are lumped into 4 currents; the lumping loses the fastest detail.</td></tr>
+</table></div>
+
+<div class="callout"><span class="lbl">Eigenvalues and time constants</span>
+<p>An <strong>eigenvalue</strong> of A, written &lambda; (units 1/s), is
+a natural decay rate of the system: left alone, some combination of
+currents decays like e<sup>&lambda;t</sup>. The <strong>time
+constant</strong> is &minus;1/&lambda;, the time for that combination to
+shrink by a factor e &asymp; 2.7. &lambda; = 0 means a current that
+never decays (a superconducting loop with no resistance). A positive
+&lambda; would mean growth: an unstable system.</p>
+<div class="tbl"><table>
+<tr><th>Mode</th><th class="num">&lambda; (1/s)</th><th class="num">Time constant</th><th>Where</th></tr>
+<tr><td>Fastest vessel mode, circuit model</td><td class="num">&minus;213</td><td class="num">4.7 ms</td><td>102 explicit loops</td></tr>
+<tr><td>Slowest vessel mode, circuit model</td><td class="num">&minus;2.7</td><td class="num">0.37 s</td><td>102 explicit loops</td></tr>
+<tr><td>Fastest vessel mode, NICE model</td><td class="num">&minus;71.2</td><td class="num">14 ms</td><td>4 lumped loops</td></tr>
+<tr><td>Slowest non-zero mode, NICE model</td><td class="num">&minus;0.085</td><td class="num">12 s</td><td>plasma-related; not in the circuit model</td></tr>
+<tr><td>Superconducting coils</td><td class="num">0</td><td class="num">never decays</td><td>both models</td></tr>
+</table></div>
+<p>All 17 eigenvalues of the NICE A have real part &le; 0: the
+equilibrium is stable. A vertically unstable plasma would show a
+positive one (the vertical-instability model of section 10 has one).
+The code warns (<code>plasmaless:unstable</code>) if a
+delivered model ever has one.</p></div>
+
+<h2 id="delta">4. Deviations and the operating point</h2>
+<p>The NICE model is a <strong>delta model</strong>: x, u and y are not
+absolute values but <em>deviations</em> from the equilibrium at the
+linearisation time. x = 0 does not mean "no current". It means "the
+currents are exactly those of the equilibrium at 84.4176 s". Likewise
+u = 0 means "the voltages of the equilibrium" (zero here, because an
+equilibrium holds its currents without drive in superconducting coils),
+and y = 0 means "the axis, Ip and gaps of the equilibrium".</p>
+<p>To report absolute values the code needs the <strong>operating
+point</strong>: the absolute numbers that correspond to x = 0. They live
+in the descriptor file <span class="file">linear_model.json</span>,
+field <code>operating_point</code>, in the IMAS sign convention:</p>
+<ul>
+  <li>coil currents: the provider's values with the sign flipped (for
+  example CS3U &minus;23248 A, CS1 +34332 A, VS3U &minus;203.6 A,
+  VS3L +203.6 A; see the sign frame below);</li>
+  <li>voltages: 0;</li>
+  <li>magnetic axis (6.29704, 0.596501) m, as given;</li>
+  <li>Ip = &minus;15.0632 MA.</li>
+</ul>
+<p>At every step the code computes <code>du = u &minus; op.voltage</code>,
+advances x, then reports <code>op.coil_current + x_to_coil &middot; x</code>
+for the coils and <code>op.y + C_y &middot; x</code> for the observables.
+Only observables whose absolute value is known (from the descriptor,
+or from the F_INIT equilibrium when the descriptor lacks it) are written
+into the equilibrium IDS. The others (here the X-point, the gaps and
+Dist2ndSep) are not sent at all; they are still computed and kept as
+deviations in the MATLAB results files (variable <code>Y</code>).</p>
+<p><strong>The descriptor gives the numbers meaning.</strong> A matrix
+alone is just numbers. <span class="file">linear_model.json</span> says
+what each row and column is: the state names, which state feeds which
+coil current (CS1U and CS1L both read state CS1; VS3U reads VS3 and VS3L
+reads &minus;VS3), the generator inputs and how they combine the 14
+<code>pf_active</code> coil voltages (<code>input_map</code>), the
+output names, the operating point, and the sign frame. It also carries
+the verified and unverified notes about the delivery, and metadata such
+as <code>shot</code>, <code>provider_note</code> and <code>time</code>.</p>
+
+<div class="callout"><span class="lbl">Which pulse, and which sign (2026-10-14)</span>
+<p>The provider's directory name and e-mail said pulse 105078. The
+delivered operating point did not fit that pulse: the provider's Ip of
+15.06 MA was twice the 7.48 MA of 105078. Checked today against the
+DINA scenario of pulse <strong>105073</strong>
+(<span class="file">imas:hdf5?path=/work/projects/pds/pds-scenarios/105073/data/in</span>,
+DD 4.1.1) at 84.4176 s: Ip = &minus;15.0632 MA, the provider's value to
+the last digit with the opposite sign; magnetic axis (6.2996, 0.6115) m
+against the provider's (6.29704, 0.596501) m; and every coil current
+equal to the provider's within about 3 % in magnitude but with the
+sign flipped (CS3U &minus;22500 A in DINA, +23248 A from the provider;
+VS3U &minus;204 A against +204 A). The model is therefore the NICE
+equilibrium of pulse 105073 at 84.4176 s, and the provider counts every
+current (coils, passives, Ip) the other way round from the IMAS data.
+Positions, gaps and distances are not affected. The user confirmed
+pulse 105073 on 2026-10-14 (the provider had labelled it 105078) and
+the directory name was updated; the sign frame still awaits the
+provider's confirmation.</p></div>
+
+<h3>The sign frame: descriptor block <code>convention</code></h3>
+<p>In one sentence: the provider counts currents the other way round,
+the wrapper counts them the IMAS way. The matrix files stay exactly as
+delivered. The descriptor tells the loader how to convert them, in a
+block called <code>convention</code> with three entries:</p>
+<dl class="terms">
+  <dt>state_sign</dt><dd>+1 or &minus;1: the sign of the provider's
+  currents relative to IMAS. Here &minus;1.</dd>
+  <dt>input_sign</dt><dd>+1 or &minus;1: the same for the provider's
+  voltages. Here &minus;1, on the assumption that the generator voltages
+  flip together with the current sense (power = V &times; I keeps its
+  meaning). To be confirmed.</dd>
+  <dt>output_sign</dt><dd>one value per output: &minus;1 for Ip (a
+  current), +1 for the geometric outputs (positions and gaps do not
+  change sign with the current frame).</dd>
+</dl>
+<p>The loader applies them once, when it reads the files: A is left
+unchanged; B is multiplied by input_sign / state_sign; each row of C is
+multiplied by state_sign / output_sign. Why these ratios: A maps currents
+to current rates, so flipping both sides cancels; B maps volts to
+current rates, so it changes by the ratio of the two frames; a row of C
+maps currents to one output, so it changes by the ratio of the state
+frame to that output's frame.</p>
+<p>Net effect for this model: A and B are unchanged (&minus;1 / &minus;1
+= +1), the Ip row of C is unchanged too (&minus;1 / &minus;1), and the
+geometric rows of C are negated (&minus;1 / +1). In words: a positive
+IMAS current deviation moves the axis the opposite way from what the
+provider's row says, because the provider's "positive" is the IMAS
+"negative".</p>
+<p><strong>The provider's second answer (2026-10-14).</strong> In their
+frame a positive generator voltage gives a positive current (COCOS
+effects would have to be tested). "VS3 and &minus;VS3" are VS3U and
+VS3L, driven by one generator in anti-series. The non-mirror rows 12
+and 13 may be the linearised model "decorrelating" the two currents;
+the provider does not consider that normal and gave no fix.</p>
+<p><strong>Our check on the delivered B.</strong> All 11 CS/PF states
+respond positively to their own generator (CS3U 1.52 ... PF6 0.49 A/s
+per V), as the rule says. But the VS3 state responds with
+&minus;3193 A/s per V of the VS3 generator and the &minus;VS3 state with
++1735. By the provider's rule the generator's positive sense is the
+VS3L direction, hence the map change to V(VS3L) &minus; V(VS3U)
+(derived; explicit confirmation still pending).</p>
+
+<h2 id="nature">5. Can the matrices change nature?</h2>
+<p>A new matrix set will arrive for every new pulse or time. What can
+change with it, and what cannot?</p>
+
+<h3>Same equilibrium code (NICE), another pulse or time</h3>
+<ul>
+  <li><strong>The form never changes:</strong> dx/dt = A x + B u,
+  y = C x, continuous time, deviations from an equilibrium.</li>
+  <li><strong>The numbers always change:</strong> they are the plasma
+  tangent at a new point (section 3).</li>
+  <li><strong>The dimensions and the meaning change only if the
+  modelling choices change.</strong> That is the provider's decision,
+  not the pulse's. The choices are: the number of passive currents (the
+  delivered "simple" model lumps each passive structure and the vessel
+  into one current each, 4 states; the provider also has a version with
+  one current per node of the finite-element mesh, which would give
+  hundreds of passive states); the set of observables (which gaps, how
+  many, with or without the X-point or the second separatrix); the
+  choice of inputs (generator voltages as here, coil voltages, or an
+  explicit VS1); and the coil groupings (CS1 as one series circuit).</li>
+</ul>
+<p>The descriptor absorbs all of these: state, input and output names,
+the coil map, the input map and the convention block. The code does not
+change. A new matrix set needs a new descriptor, nothing else.</p>
+<p><strong>Stability.</strong> At another time the equilibrium may be
+vertically unstable. Then A has one positive eigenvalue, the open-loop
+simulation (voltages held, no controller) diverges exponentially, and
+only a closed loop with the controller is meaningful. The wrapper only
+warns about it (warning id <code>plasmaless:unstable</code>) and does
+nothing else.</p>
+
+<h3>Another equilibrium code</h3>
+<p>In principle still a linear state-space model. In practice its nature
+can differ in ways the current loader does not accept without changes:</p>
+<ul>
+  <li>states that are not currents (some codes keep plasma position, Ip
+  or flux as explicit states);</li>
+  <li>inputs that are coil currents instead of voltages (current-driven
+  models have no voltage B matrix; the PDS controller sends
+  voltages);</li>
+  <li>a non-zero D matrix (direct feedthrough from inputs to
+  outputs);</li>
+  <li>a model already discretised at a fixed dt;</li>
+  <li>different units (kA, MA, kV) or sign/COCOS conventions;</li>
+  <li>outputs outside the vocabulary (rmag, zmag, rX, zX, Ip,
+  gap&lt;k&gt;, Dist2ndSep).</li>
+</ul>
+<div class="tbl"><table>
+<tr><th>Aspect</th><th>Same code, new pulse or time</th><th>Other code</th></tr>
+<tr><td class="k">Form</td><td>unchanged</td><td>may differ (D &ne; 0, discrete, current-driven)</td></tr>
+<tr><td class="k">Numbers</td><td>always new</td><td>always new</td></tr>
+<tr><td class="k">Dimensions, names</td><td>new only if the provider changes the modelling choices</td><td>likely new; states may not be currents</td></tr>
+<tr><td class="k">Units, signs</td><td>as now (SI; convention block)</td><td>may differ</td></tr>
+<tr><td class="k">Needs</td><td>a new descriptor</td><td>a descriptor, plus loader changes if the contract below is not met</td></tr>
+</table></div>
+<p>What the wrapper requires today: continuous time; D = 0; every coil
+current obtainable as one state (one state per circuit, series coils
+sharing it); inputs expressible as linear combinations of the 14
+<code>pf_active</code> coil voltages; outputs from the vocabulary; signs
+handled by the convention block; SI units. Anything else means extending
+the descriptor format and the loader, not the actor or the PDS
+workflow.</p>
+<p>The actor's inputs and outputs (<code>pf_active</code> voltages in;
+<code>pf_active</code>, <code>pf_passive</code>, <code>equilibrium</code>
+out) are fixed by the PDS coupling, not by the model, so any model that
+fits the descriptor contract looks the same from outside.</p>
+
+<h2 id="scripts">6. Same scripts?</h2>
+<p>Yes. The pipeline is: load, configure, one shared model structure,
+one shared step function, shared drivers. Only the configure step
+differs.</p>
+
+<figure>
+<div class="fig">
+<svg viewBox="0 0 640 330" role="img" aria-label="Pipeline: the machine description feeds configure_plasmaless_model, and the descriptor plus matrices feed configure_linear_model; both produce the same model struct, which the shared step function advances, driven by either the MATLAB run scripts or the MUSCLE3 actor." width="640" height="330">
+  <defs>
+    <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <!-- row 1: sources -->
+  <rect x="20" y="20" width="190" height="56" rx="3" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+  <text x="115" y="43" font-size="12" text-anchor="middle" fill="currentColor">machine description</text>
+  <text x="115" y="60" font-size="11" text-anchor="middle" fill="var(--fg-2)">data/md_dd4 (M, R)</text>
+
+  <rect x="430" y="20" width="190" height="56" rx="3" fill="var(--plasma-soft)" stroke="var(--plasma)" stroke-width="1.2"/>
+  <text x="525" y="43" font-size="12" text-anchor="middle" fill="currentColor">descriptor + matrices</text>
+  <text x="525" y="60" font-size="11" text-anchor="middle" fill="var(--fg-2)">linear_model.json, A B C .npy</text>
+
+  <!-- row 2: configure -->
+  <rect x="20" y="110" width="190" height="56" rx="3" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+  <text x="115" y="133" font-size="12" text-anchor="middle" fill="currentColor">configure_plasmaless_model</text>
+  <text x="115" y="150" font-size="11" text-anchor="middle" fill="var(--fg-2)">computes A, B; c2d</text>
+
+  <rect x="430" y="110" width="190" height="56" rx="3" fill="var(--surface)" stroke="var(--plasma)" stroke-width="1.2"/>
+  <text x="525" y="133" font-size="12" text-anchor="middle" fill="currentColor">configure_linear_model</text>
+  <text x="525" y="150" font-size="11" text-anchor="middle" fill="var(--fg-2)">reads A, B, C; c2d</text>
+
+  <line x1="115" y1="76" x2="115" y2="108" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr2)"/>
+  <line x1="525" y1="76" x2="525" y2="108" stroke="var(--plasma)" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+  <!-- row 3: model struct -->
+  <rect x="200" y="200" width="240" height="56" rx="3" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4"/>
+  <text x="320" y="223" font-size="12" text-anchor="middle" fill="currentColor">one model struct</text>
+  <text x="320" y="240" font-size="11" text-anchor="middle" fill="var(--fg-2)">Ad, Bd, C, names, maps, op</text>
+
+  <line x1="115" y1="166" x2="235" y2="198" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr2)"/>
+  <line x1="525" y1="166" x2="405" y2="198" stroke="var(--plasma)" stroke-width="1.2" marker-end="url(#arr2)"/>
+  <text x="150" y="190" font-size="11" text-anchor="start" fill="var(--fg-2)">circuit</text>
+  <text x="490" y="190" font-size="11" text-anchor="end" fill="var(--fg-2)">linear</text>
+
+  <!-- row 4: step + drivers -->
+  <rect x="20" y="280" width="190" height="40" rx="3" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+  <text x="115" y="304" font-size="12" text-anchor="middle" fill="currentColor">plasmaless_step_ids (shared)</text>
+
+  <rect x="240" y="280" width="170" height="40" rx="3" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+  <text x="325" y="304" font-size="12" text-anchor="middle" fill="currentColor">MATLAB run scripts</text>
+
+  <rect x="440" y="280" width="180" height="40" rx="3" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+  <text x="530" y="304" font-size="12" text-anchor="middle" fill="currentColor">MUSCLE3 actor</text>
+
+  <line x1="240" y1="256" x2="130" y2="278" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr2)"/>
+  <line x1="320" y1="256" x2="325" y2="278" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr2)"/>
+  <line x1="400" y1="256" x2="515" y2="278" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr2)"/>
+</svg>
+</div>
+<figcaption>Two configure functions, one model structure. Everything
+below the structure (step function, run scripts, Simulink simulators,
+MUSCLE3 actor, voltage driver) is shared and does not know which model
+it runs.</figcaption>
+</figure>
+
+<p>The selection is a directory path. For the MUSCLE3 actor it is the
+setting <code>linear_model_dir</code>; for the MATLAB run scripts the
+environment variable <code>PLASMALESS_LINEAR_MODEL_DIR</code> (or the
+<code>linear_model_dir</code> variable in the script). Empty means the
+circuit model. The directory must hold
+<span class="file">linear_model.json</span> and the matrix files.</p>
+<p>Both configure functions return the same <code>model</code> struct:
+discrete A, B, C, D; coil names in machine-description order; a map from
+states to coil currents (<code>x_to_coil</code>); passive loop names and
+map (<code>x_to_loop</code>); observable names and rows
+(<code>y_names</code>, <code>C_y</code>); and the operating point
+(<code>op</code>, all zeros for the circuit model). For the linear model
+the 14 generator inputs are first mapped onto the 14 coil voltages with
+<code>input_map</code> (B<sub>coil</sub> = B&middot;G), so the step
+function always takes coil voltages.</p>
+
+<h3>What depends on the pulse number?</h3>
+<p>In the code, nothing. The pulse number is metadata: the descriptor
+fields <code>shot</code>, <code>provider_note</code> and
+<code>time</code>, and the directory name. No branch in the code reads
+it. What does depend on the pulse:</p>
+<ul>
+  <li><strong>The matrix numbers themselves</strong>: one set per pulse
+  and time (section 3).</li>
+  <li><strong>The verification</strong> against the scenario data: the
+  operating point must be compared with the right pulse, which is how
+  the 105078/105073 mix-up was found.</li>
+  <li><strong>The PDS case the model runs with</strong>: its F_INIT
+  must be the same pulse at the same time, here 105073 at
+  t0 = 84.4176 s. <span class="file">pds-scenarios/105073</span> has DD4
+  data with long coil names such as "Central Solenoid 3U (CS3U)", which
+  the code's coil-name rule handles, and an inverse-run directory. The
+  first actor test used a 105073 F_INIT at 84.3176 s.</li>
+</ul>
+
+<div class="tbl"><table>
+<tr><th>File</th><th>Role</th><th>Shared?</th></tr>
+<tr><td class="file">imas_model/configure_plasmaless_model.m</td><td>Builds the circuit model from M and R</td><td>circuit only</td></tr>
+<tr><td class="file">imas_model/configure_linear_model.m</td><td>Builds the model from a descriptor directory; checks sizes and names</td><td>linear only</td></tr>
+<tr><td class="file">imas_model/read_npy.m</td><td>Reads the .npy matrix files</td><td>linear only</td></tr>
+<tr><td class="file">imas_model/plasmaless_observables_to_equilibrium.m</td><td>Writes the observables into a DD4 equilibrium slice (and the inverse reader <span class="file">_from_equilibrium.m</span>)</td><td>linear only</td></tr>
+<tr><td class="file">imas_model/plasmaless_step_ids.m</td><td>One time step with IDS in, IDS out</td><td>shared</td></tr>
+<tr><td class="file">plasmaless_timestep_forward.m</td><td>The matrix-vector product</td><td>shared</td></tr>
+<tr><td class="file">run_plasmaless_imas.m, run_plasmaless_model.m, simulator_plasmaless_model_imas.m</td><td>MATLAB and Simulink drivers</td><td>shared</td></tr>
+<tr><td class="file">muscle3/muscle_plasmaless_actor.m, muscle3/voltage_driver.py</td><td>MUSCLE3 actor and standalone test driver</td><td>shared</td></tr>
+<tr><td class="file">vertical_instability/configure_vertical_instability_model.m, vertical_instability/extract_equilibrium_data.m</td><td>Builds the vertical-instability model from an equilibrium and the machine description (section 10)</td><td>vertical only</td></tr>
+<tr><td class="file">tests/test_plasmaless_linear.m</td><td>7 tests for the linear path (build, maps, step loop, operating point, descriptor errors, round trip, circuit model unchanged); all 14 tests of the suite pass</td><td>linear + regression</td></tr>
+</table></div>
+
+<h2 id="actor">7. How the actor works, step by step</h2>
+<p>The actor is the MUSCLE3 component that wraps the model in PDS. It
+runs in one of three modes, chosen by two settings. Here is what it does,
+in order.</p>
+
+<h3>Start-up (all modes)</h3>
+<ol>
+  <li>It receives the F_INIT messages: the scenario's multi-time
+  equilibrium and pf_active. The timestamp of the equilibrium message is
+  the start time t0.</li>
+  <li>It reads its settings (table at the end of this section).</li>
+  <li>It reads the machine description and checks the coils against the
+  F_INIT pf_active: same coils, same order. Otherwise it stops with an
+  error.</li>
+</ol>
+
+<h3>Without plasma (<code>linear_model_dir</code> and <code>vertical_equilibrium_uri</code> empty, the default)</h3>
+<ul>
+  <li><strong>Build:</strong> the circuit model from the machine
+  description (14 coils, 102 passive loops).</li>
+  <li><strong>Starting state:</strong> coil currents from the F_INIT
+  pf_active at t0; passive currents 0.</li>
+  <li><strong>Each step:</strong> take the 14 coil voltages from the
+  controller, compute the new currents, send pf_active (coil currents),
+  pf_passive (102 loop currents) and an equilibrium that is a pure copy
+  of the scenario's Ip and boundary geometric axis, interpolated at
+  time t. There is no plasma in the model, so the controller sees zero
+  Ip and position error.</li>
+  <li><code>operating_point</code> is ignored.</li>
+</ul>
+
+<h3>With the linear model (<code>linear_model_dir</code> set)</h3>
+<ul>
+  <li><strong>Build:</strong> the linear model from the descriptor and
+  the matrices. The model works in "changes from a reference
+  state".</li>
+  <li><strong>Starting state:</strong> all changes zero.</li>
+  <li><strong>Each step:</strong>
+    <ol>
+      <li>convert the 14 coil voltages into the provider's generator
+      voltages (input map: VS1 gets nothing; VS3 = V(VS3L) &minus;
+      V(VS3U));</li>
+      <li>subtract the reference voltages;</li>
+      <li>compute the new changes (one matrix step);</li>
+      <li>add the reference values and send:
+      pf_active = reference coil currents + changes (CS1U = CS1L; VS3U
+      and VS3L from their two states); pf_passive = 4 lumped currents
+      (PS_1, PS_2, VV_1, VV_2); equilibrium = the scenario copy (as
+      without plasma) with the model's own values written on top for
+      every plasma quantity that has a known reference.</li>
+    </ol></li>
+</ul>
+
+<h3>With the vertical model (<code>vertical_equilibrium_uri</code> set)</h3>
+<p>The actor loads the equilibrium at <code>vertical_equilibrium_time</code>
+(default t0) and builds the vertical-instability model from it (section
+10). It works in changes from that equilibrium, like the linear model.
+Each step sends pf_active (14 coil currents), pf_passive (102 loop
+currents) and the scenario equilibrium with Ip and the current centre
+(<code>current_centre.r</code>, <code>.z</code>) written on top. The
+reference voltages come from the F_INIT pf_active at t0, so the plasma
+stays put until the controller changes the voltages.</p>
+
+<h3>The <code>operating_point</code> setting, in plain words</h3>
+<p>It says where the reference state comes from. <code>descriptor</code>
+means "the model's own reference": the descriptor for the linear model,
+the loaded equilibrium for the vertical model. The table below is
+written for the linear model. Whichever source is
+chosen, the other one fills, field by field, whatever the first one
+lacks.</p>
+<div class="tbl"><table>
+<tr><th></th><th><code>descriptor</code> (default)</th><th><code>f_init</code></th></tr>
+<tr><td class="k">Reference taken from</td><td>the state at which the provider computed the matrices</td><td>the scenario at t0 (F_INIT pf_active and equilibrium)</td></tr>
+<tr><td class="k">Advantage</td><td>the changes are added to the state the matrices belong to: the model is used where it is valid</td><td>the run starts exactly on the scenario: no jump at t0</td></tr>
+<tr><td class="k">Drawback</td><td>if the scenario at t0 differs, the controller sees a jump at t0. For 105073 the model reference and the inverse solution at t0 differ by up to 22 kA (CS3L)</td><td>the changes are added to a state the matrices were not computed for</td></tr>
+<tr><td class="k">Choose when</td><td>t0 is at (or very near) the linearisation time and the scenario matches it</td><td>a smooth start on the scenario matters more than strict validity of the model</td></tr>
+</table></div>
+<p>Reference voltages are zero in the descriptor, so with
+<code>descriptor</code> the controller's voltages enter the linear model
+unchanged. The equilibrium of the vertical model gives no voltages, so
+there the reference voltages come from the F_INIT pf_active at t0.</p>
+
+<h3>What "reference known" means</h3>
+<p>The model only says "the X-point moved 2 mm down". To send a
+position you also need "where it was at the start". If neither the
+descriptor nor the scenario equilibrium gives that starting value, the
+actor cannot send a real position. It leaves the field empty rather than
+send a wrong number. For 105073 the descriptor gives starting values
+for Ip and the magnetic axis only, and the scenario equilibrium sent by
+PDS has no X-point or gap values. So Ip and the axis are written; the
+X-point and the gaps are not. They are still computed, and kept as
+changes in the MATLAB results files (variable <code>Y</code>).</p>
+<div class="tbl"><table>
+<tr><th>Quantity</th><th>Where it goes in the equilibrium IDS (DD4)</th><th>Starting value available for 105073?</th><th>Written at each step in the 105073 run?</th></tr>
+<tr><td class="k">Ip</td><td><code>time_slice.global_quantities.ip</code></td><td>yes</td><td>yes</td></tr>
+<tr><td class="k">Magnetic axis (rmag, zmag)</td><td><code>global_quantities.magnetic_axis.r</code> / <code>.z</code></td><td>yes</td><td>yes</td></tr>
+<tr><td class="k">X-point (rX, zX)</td><td><code>time_slice.contour_tree.node(1).r</code> / <code>.z</code>, <code>critical_type</code> 1 (saddle point); DD4 has no <code>boundary_separatrix</code> x_point</td><td>no</td><td>no</td></tr>
+<tr><td class="k">Gaps (gap1..gap3)</td><td><code>boundary.gap(k).value</code>, name <code>gap&lt;k&gt;</code></td><td>no</td><td>no</td></tr>
+<tr><td class="k">Dist2ndSep</td><td>no DD4 field</td><td>not applicable</td><td>never</td></tr>
+<tr><td class="k">Current centre rc</td><td><code>global_quantities.current_centre.r</code></td><td>with the vertical model (from the loaded equilibrium)</td><td>with the vertical model only</td></tr>
+<tr><td class="k">Current centre zc</td><td><code>global_quantities.current_centre.z</code></td><td>with the vertical model (from the loaded equilibrium)</td><td>with the vertical model only</td></tr>
+</table></div>
+<p class="small">Actor log of the 105073 run: "sent as absolute values:
+{rmag,zmag,Ip}; not sent (unknown): {rX,zX,gap1,gap2,gap3,Dist2ndSep}";
+the output equilibrium has 0 <code>contour_tree</code> nodes and 0
+gaps. Mapping code:
+<span class="file">imas_model/plasmaless_observables_to_equilibrium.m</span>.</p>
+
+<h3>All settings</h3>
+<div class="tbl"><table>
+<tr><th>Setting</th><th>Default</th><th>Meaning</th><th>Used by</th></tr>
+<tr><td class="k">dt</td><td>none (mandatory)</td><td>model time step, s; must be &gt; 0</td><td>all modes</td></tr>
+<tr><td class="k">t_interval</td><td>none (mandatory)</td><td>coupling interval, s; must equal dt</td><td>all modes</td></tr>
+<tr><td class="k">t_end</td><td>none (mandatory)</td><td>end time, s; must be &gt; t0 and inside the scenario window</td><td>all modes</td></tr>
+<tr><td class="k">md_uri</td><td><span class="file">data/md_dd4</span> of this repository</td><td>machine description (coils, passive loops, M, R)</td><td>all modes (coil check; circuit and vertical model build)</td></tr>
+<tr><td class="k">linear_model_dir</td><td>'' (empty)</td><td>directory with <span class="file">linear_model.json</span> and the matrices; empty = no linear model</td><td>selects the linear model</td></tr>
+<tr><td class="k">vertical_equilibrium_uri</td><td>'' (empty)</td><td>IMAS URI or entry path of the equilibrium; set = vertical model; cannot be combined with <code>linear_model_dir</code></td><td>selects the vertical model</td></tr>
+<tr><td class="k">vertical_equilibrium_time</td><td>t0</td><td>time of the equilibrium slice, s</td><td>vertical model only</td></tr>
+<tr><td class="k">vertical_passive_currents</td><td>equilibrium</td><td>vessel currents from the entry (<code>equilibrium</code>) or <code>zero</code></td><td>vertical model only</td></tr>
+<tr><td class="k">operating_point</td><td>descriptor</td><td>where the reference state comes from: <code>descriptor</code> (the model's own reference) or <code>f_init</code></td><td>linear and vertical models</td></tr>
+</table></div>
+<p>In all modes the ports and IDS types are identical, so PDS sees no
+difference in the coupling; only the content of the messages
+changes.</p>
+
+<h2 id="ports">8. What the actor sends and receives</h2>
+<p>The MUSCLE3 ports of the actor are unchanged. Only the content of
+some messages differs between the two models.</p>
+<div class="tbl"><table>
+<tr><th>Port</th><th>IDS</th><th>Circuit model</th><th>NICE linearised model</th></tr>
+<tr><td class="k">F_INIT (once)</td><td>equilibrium, pf_active</td><td colspan="2">Scenario reference at t0: multi-time equilibrium and pf_active (machine description plus scenario coil currents and voltages). Same for both models.</td></tr>
+<tr><td class="k">S (each step)</td><td>pf_active</td><td colspan="2">Coil voltages from the controller, 14 coils. Same for both models.</td></tr>
+<tr><td class="k">O_I (each step)</td><td>pf_active</td><td>14 coil currents.</td><td>14 absolute coil currents = operating point + deviation; CS1U = CS1L; VS3U and VS3L read states VS3 and &minus;VS3.</td></tr>
+<tr><td class="k">O_I (each step)</td><td>pf_passive</td><td>102 loop currents.</td><td>4 lumped currents: PS_1, PS_2, VV_1, VV_2.</td></tr>
+<tr><td class="k">O_I (each step)</td><td>equilibrium</td><td>Reference pass-through, unchanged.</td><td>Pass-through plus the observables whose absolute value is known, written as absolute values. For the 105073 model: Ip, rmag and zmag. rX, zX, gap1..gap3 and Dist2ndSep have no known reference and are not written at all (the output equilibrium has 0 <code>contour_tree</code> nodes and 0 gaps). <code>boundary.geometric_axis</code> stays the pass-through: the model does not give it.</td></tr>
+</table></div>
+<p>With the vertical model (section 10): pf_active carries the 14
+coil currents, pf_passive the 102 loop currents, and the equilibrium is
+the pass-through plus Ip, <code>current_centre.r</code> and
+<code>current_centre.z</code>.</p>
+<p>Two limits follow from the input side. VS1 cannot be driven through
+<code>pf_active</code> because no coil carries it (and the PDS controller
+bridge drops the VS1 command anyway). The VS3 generator voltage is taken
+as V(VS3L) &minus; V(VS3U) (since 2026-10-14; before: V(VS3U) &minus; V(VS3L)):
+the provider's rule "a positive voltage must give a positive current"
+applied to the delivered B, whose VS3 column drives the VS3L state
+positively (+1735 A/s per V) and the VS3U state negatively (&minus;3193);
+derived, not yet explicitly confirmed.</p>
+<p>The actor setting <code>operating_point</code> chooses where the
+absolute values start: <code>descriptor</code> (default; the descriptor
+wins, F_INIT fills the gaps, so the controller sees a step at t0 if the
+scenario differs from the linearisation point) or <code>f_init</code>
+(the scenario values win, so the run starts on the scenario).</p>
+
+<h2 id="pds">9. PDS integration</h2>
+<p>The IMAS-PDS workflow <code>plasmaless_controller</code> (branch
+<code>feature/plasmaless_controller</code>, program <code>plasmaless</code>)
+needs <strong>no code change</strong>. Ports, timing and message flow are
+the same. What is needed:</p>
+<ol>
+  <li><strong>One settings line</strong> in the case overrides:
+  <code>plasmaless.linear_model_dir: &lt;absolute dir&gt;</code>, and
+  optionally <code>plasmaless.operating_point: f_init</code>.</li>
+  <li><strong>A matching case.</strong> The matrices belong to pulse
+  105073 at 84.4176 s, so the case window must start near there, with
+  an initial state from a NICE inverse run of that pulse. Such a case
+  was built and run on 2026-10-14 (below). The older case, 105084 at
+  136 s, does not match this matrix set.</li>
+  <li><strong>pf_passive consumers</strong> (recorder, sink) receive 4
+  loops instead of 102. Generic components accept that.</li>
+  <li><strong>The controller now sees a modelled Ip and magnetic
+  axis</strong> instead of pass-through values, so its Ip loop acts.
+  With the circuit model those loops saw constant references.</li>
+  <li><strong>The name.</strong> "plasmaless" is no longer accurate for
+  the linear model: the actor is then a linear plasma-and-circuit
+  response model. Renaming the PDS program or component is cosmetic and
+  the user's call.</li>
+</ol>
+<div class="callout"><span class="lbl">Same nature of inputs and outputs</span>
+<p>As long as a linear model comes from NICE with the same descriptor
+format, the nature of the inputs and outputs does not change. Only the
+numbers, the number of states and the list of observables may differ,
+and the descriptor carries all of those. A linear model from another
+code would fit too, if it is expressed as A, B, C with named states,
+inputs and outputs.</p></div>
+
+<h3>Tested on 2026-10-14, pulse 105073</h3>
+<p>Set-up: IMAS-PDS worktree <span class="file">IMAS-PDS-plasmaless</span>,
+branch <code>feature/plasmaless_controller</code>, new case override
+<span class="file">cases/overrides/plasmaless_controller_105073.ymmsl</span>.</p>
+<div class="tbl"><table>
+<tr><th>Setting</th><th>Value</th></tr>
+<tr><td class="k">source.t_min / t_max</td><td>81.0 s / 100.0 s</td></tr>
+<tr><td class="k">plasmaless.t_end</td><td>83.4576 s</td></tr>
+<tr><td class="k">dt = t_interval</td><td>0.005 s</td></tr>
+<tr><td class="k">plasmaless.linear_model_dir</td><td>the model directory</td></tr>
+<tr><td class="k">plasmaless.operating_point</td><td>descriptor</td></tr>
+</table></div>
+<p>Steps, in order:</p>
+<ol>
+  <li><strong>NICE inverse workflow for 105073</strong> (Slurm,
+  4 min 47 s, 51 slices). No slice falls on 84.4176 s, so the run starts
+  at t0 = 81.4576 s, 3 s before the linearisation time. At that slice
+  Ip = &minus;15.064 MA and the magnetic axis is (6.296, 0.587) m,
+  close to the model's operating point.</li>
+  <li><strong>Case pre-processing.</strong></li>
+  <li><strong>Closed-loop run with the PCS magnetic controller</strong>
+  (Slurm, 3 min 16 s): 400 exchanges over 2 s, all six instances exit 0;
+  the actor loaded the linear model with 17 states, 14 coils, 4 passive
+  loops and 9 observables. Run directory
+  <span class="file">cases/runs/plasmaless_controller_105073_20261014_103330</span>.</li>
+</ol>
+<div class="tbl"><table>
+<tr><th>Result</th><th>Range over the 2 s</th></tr>
+<tr><td class="k">Ip</td><td>&minus;15.04 to &minus;15.18 MA</td></tr>
+<tr><td class="k">Magnetic axis r</td><td>6.30 to 6.46 m (16 cm)</td></tr>
+<tr><td class="k">Coil currents</td><td>moved by up to 5.5 kA</td></tr>
+<tr><td class="k">VS3 currents</td><td>to &minus;100 kA (limit 60 kA)</td></tr>
+<tr><td class="k">Passive currents</td><td>up to 583 kA</td></tr>
+<tr><td class="k">Controller commands</td><td>at their clip values from the first step (&minus;45 kV CS, &minus;48 kV PF1, &minus;55 kV PF2..PF5, &minus;22.5 kV PF6); a known behaviour of this controller set-up, seen already on 105084</td></tr>
+</table></div>
+<p><strong>How to read this.</strong> It is an integration test that
+passes: settings, coil order, ports, exchanges and outputs all work. It
+is not a physics validation. The deviations are beyond what a
+linearisation at one point can be trusted for (section 3), and the
+geometric axis is still a pass-through. This run used the previous VS3
+map (V(VS3U) &minus; V(VS3L)) and was not repeated after the map
+change.</p>
+
+<h3>What about the existing 105084 case?</h3>
+<p>Nothing to add there. Without <code>linear_model_dir</code> the actor
+builds the plasma-free circuit model from the machine description at
+start-up; there is no matrix file for it. A linear model is per pulse
+and per time, so the key lives in the shot's override. The two settings
+are now documented, as comments with unchanged defaults, in
+<span class="file">workflows/plasmaless_controller/settings.ymmsl</span>.</p>
+<p class="small">Operational note: the PDS local install of this
+repository (<span class="file">local_installs/plasma-tokamak-circuits</span>)
+is still at the 8 October commit. Until branch
+<code>IMAS_Muscle3_with_plasma</code> is committed and the install
+refreshed (<span class="file">setup_files/setup_plasmaless.sh</span>,
+which now defaults to that branch), <code>PLASMALESS_REPO</code> must
+point at the working repository when submitting.</p>
+
+<h2 id="vertical">10. The vertical-instability model</h2>
+<p>The repository now holds a third model. It answers one question the
+other two cannot: what happens when the plasma starts to move up or
+down?</p>
+
+<h3>What it is</h3>
+<p>It is the circuit model of section 2 with a plasma added. Same 14
+coils, same 102 vessel loops, same order, and the same 14 coil voltages
+as inputs. On top of that comes one more piece of physics: the vertical
+force on the plasma.</p>
+<ul>
+  <li>The plasma is treated as a <strong>rigid current
+  distribution</strong>. It keeps its shape and its current. It can only
+  slide up or down as a whole.</li>
+  <li>The coil and vessel currents push on the plasma current (the
+  Lorentz force). The model assumes this force is always balanced: the
+  plasma instantly sits where the vertical force is zero.</li>
+  <li>Ip and the radial position are fixed. Only the height can
+  change.</li>
+</ul>
+<p>Moving the plasma changes the flux seen by every coil and vessel loop,
+so the currents react. That reaction moves the plasma further. For an
+ITER plasma this feedback runs away: the model has <strong>exactly one
+positive eigenvalue</strong> (section 3 explains eigenvalues). That
+eigenvalue is the vertical instability. Left alone, a small displacement
+grows exponentially.</p>
+<div class="tbl"><table>
+<tr><th>Equilibrium</th><th>Vessel currents</th><th class="num">Growth rate</th><th class="num">Grows by e every</th></tr>
+<tr><td class="k">DINA 105108 at 100 s (the model author's default)</td><td>from the entry</td><td class="num">3.17 1/s</td><td class="num">0.32 s</td></tr>
+<tr><td class="k">DINA 105073 at 84.4176 s</td><td>zero (explicit choice)</td><td class="num">7.62 1/s</td><td class="num">0.13 s</td></tr>
+</table></div>
+<div class="callout plasma"><span class="lbl">Contrast with the NICE model</span>
+<p>The NICE linearised model of section 3 describes the same 105073
+state, yet none of its 17 eigenvalues is positive. One of the two models
+therefore misses or misplaces the instability. Why the NICE model has no
+positive eigenvalue is an open question for its provider
+(section 12).</p></div>
+
+<h3>What it is built from</h3>
+<p>Two ingredients: an <strong>equilibrium</strong> and the machine
+description. The equilibrium must give the plasma current density on a
+rectangular grid (<code>profiles_2d</code>). That is the "current
+distribution" that slides up and down.</p>
+<ul>
+  <li><strong>Any IMAS entry and time</strong> with such a grid works.
+  The DINA scenario entries of PDS
+  (<span class="file">pds-scenarios/&lt;shot&gt;/data/in</span>)
+  qualify.</li>
+  <li><strong>NICE outputs do not.</strong> They store the current only
+  on an unstructured mesh, not on a rectangular grid.</li>
+  <li><strong>Vessel currents</strong> are taken from the entry when it
+  has the 102 loops. Otherwise the model stops, unless zero vessel
+  currents are explicitly requested. The scenario entries have no
+  vessel currents, so they need that explicit choice.</li>
+  <li><strong>Sign of the flux.</strong> The data dictionary changed the
+  sign convention of psi between DD3 and DD4. The code reads the entry's
+  DD version to choose the sign, then checks it with Ampere's law: the
+  current recomputed from psi must match the stored Ip, sign
+  included.</li>
+</ul>
+
+<h3>How zIp becomes an IDS field</h3>
+<p>The model's output is called <strong>zIp</strong>: the plasma
+current times the vertical displacement, zIp = Ip0 &times; &delta;z, in
+A&nbsp;m. The core mathematics is unchanged from the author's version.
+The conversion happens in the IMAS layer around it:</p>
+<ol>
+  <li><strong>At build time:</strong> the code computes the current
+  centre of the equilibrium distribution: the current-weighted mean
+  height z<sub>c0</sub> and radius r<sub>c0</sub>. It divides the zIp
+  row of the output matrix by Ip0. That row now gives metres of
+  displacement per ampere of coil or vessel current change.</li>
+  <li><strong>At each step:</strong> zc = z<sub>c0</sub> +
+  displacement; Ip = Ip0 and rc = r<sub>c0</sub> (both fixed by the
+  model).</li>
+  <li><strong>Output:</strong> the actor writes these three numbers into
+  the equilibrium it already sends:
+  <code>global_quantities.ip</code>,
+  <code>global_quantities.current_centre.r</code> and
+  <code>global_quantities.current_centre.z</code>. The DD4 definition of
+  <code>current_centre.z</code> is "vertical coordinate of current
+  centre": exactly what the model computes. No field is reused as a
+  placeholder.</li>
+</ol>
+<p>Check: z<sub>c0</sub> against the entry's own
+<code>current_centre.z</code>, written by DINA.</p>
+<div class="tbl"><table>
+<tr><th>Equilibrium</th><th class="num">z<sub>c0</sub> (model)</th><th class="num">current_centre.z (entry)</th><th class="num">Difference</th></tr>
+<tr><td class="k">105073 at 84.4176 s</td><td class="num">0.5909 m</td><td class="num">0.5909 m</td><td class="num">0.03 mm</td></tr>
+<tr><td class="k">105108 at 100 s</td><td class="num">0.5214 m</td><td class="num">0.5243 m</td><td class="num">3 mm</td></tr>
+</table></div>
+
+<h3>In PDS</h3>
+<p>Nothing changes in the coupling: same port, same IDS type, same
+timing. Three more fields are filled in the equilibrium. The sinks and
+the recorder store and show them like any other field.</p>
+<div class="callout plasma"><span class="lbl">Caveat: the vertical loop is not closed</span>
+<p>The PCS controller of the <code>plasmaless_controller</code> workflow
+reads Ip and the boundary geometric axis, not the current centre. It
+does not close the vertical loop either: the VS1 command is dropped, and
+VS3 gets only resistance times current. A PDS closed-loop run with this
+model will therefore drift away (growth rate 3 to 8 1/s) until a
+vertical-stabilisation controller is wired.</p>
+<p>Note also that <code>current_centre</code> is a perfect position
+measurement. On the real machine the position comes from magnetic
+sensors and an equilibrium reconstruction. A possible later chain:
+synthetic magnetic measurements, then a reconstruction actor.</p></div>
+
+<h3>Actor options and MATLAB scripts</h3>
+<div class="tbl"><table>
+<tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+<tr><td class="k">vertical_equilibrium_uri</td><td>'' (not used)</td><td>IMAS URI or entry path of the equilibrium; set = vertical model</td></tr>
+<tr><td class="k">vertical_equilibrium_time</td><td>t0</td><td>time of the equilibrium slice, s</td></tr>
+<tr><td class="k">vertical_passive_currents</td><td>equilibrium</td><td><code>equilibrium</code> (from the entry) or <code>zero</code></td></tr>
+</table></div>
+<ul>
+  <li>The linear and the vertical model cannot be selected together.
+  Setting both is an error.</li>
+  <li><code>operating_point: descriptor</code> now means "the model's
+  own reference": the descriptor for the linear model, the loaded
+  equilibrium for the vertical model.</li>
+  <li>With the vertical model, the reference voltages come from the
+  F_INIT pf_active at t0. The plasma therefore does not move until the
+  voltages change.</li>
+  <li>MATLAB scripts (<span class="file">run_plasmaless_imas.m</span>,
+  <span class="file">run_plasmaless_model.m</span>): environment
+  variables <code>PLASMALESS_VERTICAL_EQUILIBRIUM_URI</code>,
+  <code>PLASMALESS_VERTICAL_EQUILIBRIUM_TIME</code> and
+  <code>PLASMALESS_VERTICAL_PASSIVE_CURRENTS</code>.</li>
+</ul>
+
+<h3>Verification</h3>
+<ul>
+  <li><strong>Tests:</strong>
+  <span class="file">tests/test_vertical_instability.m</span> (the
+  author's, 2 tests) and
+  <span class="file">tests/test_plasmaless_vertical.m</span> (new, 7
+  tests: build from the DD4 and DD3 entries, step loop against direct
+  recursion, Ip/rc/zc round trip through the equilibrium IDS, zero-vessel
+  option, entry-path handling, circuit and linear models unchanged). All
+  test suites of the repository pass.</li>
+  <li><strong>Standalone MUSCLE3 run</strong> (105073, zero vessel
+  currents, dt 1 ms, 1 s): zc stays at z<sub>c0</sub> until the first
+  voltage pulse at 0.5 s, then is 0.97 mm away at 1.0 s. The result is
+  identical to a direct step loop without MUSCLE3.</li>
+</ul>
+
+<h2 id="student">11. The same exercise by a student</h2>
+<p>A clone of this repository from 9 October, taken before the
+linear-model work, was used as scratch space for an independent
+exercise on the same model. It holds the same seven matrix files, byte
+for byte, three MATLAB scripts
+(<span class="file">configure_nice_lin_model.m</span>,
+<span class="file">run_nice_lin_model.m</span>,
+<span class="file">timeseries_nice_lin_model.m</span>) and a copied
+Simulink simulator.</p>
+<p><strong>Independent agreement with ours:</strong> the generator input
+order (VS1 column 12, PF6 column 13, VS3 column 14); CS1 as one state
+fed by CS1U and CS1L; VS1 as a star-point generator without a current
+of its own; the first 12 states as coil currents; <code>c2d</code> with
+zero-order hold; a deviation model started from x0 = 0.</p>
+<p><strong>Differences:</strong> open-loop <code>lsim</code> pulse
+responses only (one bipolar 10 V pulse per generator, 28 s); coil
+currents exposed by appending identity rows to C; the VS3L state and the
+passives ignored; no descriptor, no sign frame, no operating point; no
+IMAS, MUSCLE3 or PDS interface; no coded tests; the label 105078
+kept.</p>
+<div class="tbl"><table>
+<tr><th>Aspect</th><th>Student</th><th>This repository</th></tr>
+<tr><td class="k">Source</td><td>same seven matrix files</td><td>same seven matrix files + descriptor</td></tr>
+<tr><td class="k">Input order</td><td>generator order, VS1 = 12, PF6 = 13, VS3 = 14</td><td>same, via <code>inputs</code> and <code>input_map</code></td></tr>
+<tr><td class="k">State naming</td><td>first 12 = coil currents, CS1 shared</td><td>same, plus VS3/&minus;VS3, PS and VV named in the descriptor</td></tr>
+<tr><td class="k">Discretisation</td><td>c2d, zero-order hold</td><td>same</td></tr>
+<tr><td class="k">Operating point</td><td>none (x0 = 0, deviations only)</td><td>descriptor values, absolute outputs</td></tr>
+<tr><td class="k">Sign frame</td><td>provider frame</td><td>IMAS frame through <code>convention</code></td></tr>
+<tr><td class="k">VS3</td><td>VS3L state ignored</td><td>VS3U from VS3, VS3L from &minus;VS3; map V(VS3L) &minus; V(VS3U)</td></tr>
+<tr><td class="k">VS1</td><td>star-point generator, no own current</td><td>same; not drivable through pf_active</td></tr>
+<tr><td class="k">Interfaces</td><td>MATLAB scripts, copied Simulink model</td><td>IMAS step, MATLAB/Simulink, MUSCLE3 actor, PDS workflow</td></tr>
+<tr><td class="k">Validation</td><td>open-loop pulse plots</td><td>14 coded tests, circuit-model comparison, PDS closed-loop run</td></tr>
+</table></div>
+<p><strong>Useful cross-check from their plots:</strong> the VS1 pulse
+moves PF2 to PF5 only, an empirical confirmation of the star point.
+Their one-pulse-per-generator signal would make a good automated test
+for us.</p>
+<p><strong>Cautions for the student:</strong> the work is in the
+provider's frame only, so it is not usable for absolute values or for
+comparisons with IMAS data. The clone's working tree has all 23 tracked
+files deleted, so a commit there would remove the clone's content.</p>
+
+<h2 id="open">12. Open points to confirm with the model provider</h2>
+<ul>
+  <li><span class="status">unverified</span> <strong>Sign
+  frame.</strong> The pulse is settled: the provider labelled the model
+  105078 and the user confirmed 105073 at 84.4176 s on 2026-10-14
+  (directory renamed). Still to confirm: that all currents are counted
+  opposite to IMAS, including whether the generator voltages flip with
+  the currents (<code>input_sign</code> = &minus;1). The provider's
+  rule "positive voltage gives positive current" holds within their
+  frame; the frame itself relative to IMAS is the open part.</li>
+  <li><span class="status">unverified</span> <strong>VS3 generator
+  voltage sign convention.</strong> Taken as V(VS3L) &minus; V(VS3U)
+  since 2026-10-14 (provider's rule: positive voltage gives positive
+  current, applied to the delivered B; the earlier V(VS3U) &minus; V(VS3L)
+  is superseded). Unchanged by the frame flip, since both x and u flip.
+  An explicit confirmation of the loop sense is still pending.</li>
+  <li><span class="status">unverified</span> <strong>VS3 and &minus;VS3
+  states are not exact mirror images in the dynamics.</strong> Rows 12
+  and 13 of A and B differ by a factor 1.84 although the A columns are
+  exact negatives. The provider (second answer, 2026-10-14) suspects that
+  the linearised model decorrelates the two currents and does not
+  consider it normal; no fix provided.</li>
+  <li><span class="status">unverified</span> <strong>The
+  &minus;100 kA VS3 excursion in the PDS run</strong> (limit 60 kA),
+  obtained with the previous VS3 map and controller commands at their
+  clip values; not yet repeated with the current map.</li>
+  <li><span class="status">open</span> <strong>No vertical
+  instability in the NICE model.</strong> None of its 17 eigenvalues is
+  positive, while the vertical-instability model built from the DINA
+  equilibrium of the same 105073 state has one (7.62 1/s, section
+  10).</li>
+  <li><span class="status">unverified</span> <strong>Gap
+  definitions.</strong> "Not used for now"; no values were given.</li>
+</ul>
+<p>Closed today: the origin of the operating-point coil currents. They
+are the NICE equilibrium of 105073 at 84.4176 s, within 3 % of DINA
+once the sign frame is applied.</p>
+
+<h3>Where to look</h3>
+<ul>
+  <li><span class="file">README.md</span>, section "External linear
+  model (NICE linearisation)": descriptor format, output vocabulary,
+  semantics, how to run, status of the delivery.</li>
+  <li><span class="file">linearModelSimple_105073_t84.417598/README.md</span>
+  and <span class="file">linear_model.json</span>: the delivered model,
+  verified facts and open questions.</li>
+  <li><span class="file">imas_model/configure_linear_model.m</span> and
+  <span class="file">imas_model/configure_plasmaless_model.m</span>: the
+  two model builders.</li>
+  <li><span class="file">imas_model/plasmaless_step_ids.m</span>: the
+  shared step.</li>
+  <li><span class="file">muscle3/muscle_plasmaless_actor.m</span> and
+  <span class="file">muscle3/README.md</span>: ports, settings,
+  operating-point rules.</li>
+  <li><span class="file">vertical_instability/</span>
+  (<span class="file">README.md</span>: theory, equations, IMAS and
+  MUSCLE3 integration) and the README section "Vertical-instability
+  model": the third model.</li>
+  <li><span class="file">pds_integration.txt</span>, sections 2 to 4:
+  how the actor, the PDS workflow and the linear model were
+  integrated; sections 4.7 and 4.8: the 105073 run and the student
+  exercise; section 5: the vertical-instability model.</li>
+  <li>In the IMAS-PDS worktree:
+  <span class="file">cases/overrides/plasmaless_controller_105073.ymmsl</span>
+  (the case) and
+  <span class="file">workflows/plasmaless_controller/settings.ymmsl</span>
+  (the two documented settings).</li>
+  <li><span class="file">tests/test_plasmaless_linear.m</span>: the
+  linear-model tests;
+  <span class="file">tests/test_plasmaless_vertical.m</span>: the
+  vertical-model tests.</li>
+</ul>
+
+<footer>Repository plasma-tokamak-circuits, branch IMAS_Muscle3_with_plasma.
+Facts as verified on 2026-10-14 (vertical-instability model: 2026-10-15) (pulse 105073, sign frame derived from
+the DINA scenario); items marked "unverified" await the model
+provider's confirmation.</footer>
+</div>

@@ -11,7 +11,7 @@ function [model, x0] = configure_plasmaless_model(em_coupling, pf_active, pf_pas
 % fields shared with configure_linear_model: n_states, state_names
 % (= [coil_names loop_names]), coil_names, n_coils, x_to_coil (coil currents =
 % x_to_coil*x), loop_names, n_loops, x_to_loop, y_names (none), C_y (0 x n),
-% op (operating point, all zeros: the circuit model is absolute).
+% op (operating point, all zeros incl. loop_current: the circuit model is absolute).
 % pf_active_init, pf_passive_init (optional, warm start): single time slice
 % giving the initial state x0 = [Ia; Ie]; coils are matched to the model by
 % short name, loops by position (name checked). Without them x0 is zero.
@@ -77,7 +77,7 @@ model.y_names = {};
 model.C_y = zeros(0,n_states);
 % operating point (zero: states, inputs and outputs are absolute values)
 model.op = struct('coil_current',zeros(n_coils,1),'coil_current_given',false(n_coils,1), ...
-    'voltage',zeros(n_coils,1),'voltage_given',false(n_coils,1),'y',zeros(0,1),'y_known',false(0,1));
+    'loop_current',zeros(n_loops,1),'voltage',zeros(n_coils,1),'voltage_given',false(n_coils,1),'y',zeros(0,1),'y_known',false(0,1));
 
 % initial state
 x0 = zeros(n_coils+n_loops,1);   % cold start, as x0 = zeros(size(A,1),1) in run_plasmaless_model.m

@@ -13,7 +13,7 @@ function [model, x0] = configure_linear_model(model_dir, dt, pf_active_md)
 % plasmaless:inputUndriven; without input_map, inputs must be the coil set
 % and the map is the permutation to machine-description order), coil_states
 % (coil -> state), passive_states (list), outputs (p names in {rmag, zmag,
-% rX, zX, Ip, gap<k>, Dist2ndSep}), optional operating_point {coil_current,
+% rX, zX, Ip, rc, zc, gap<k>, Dist2ndSep}), optional operating_point {coil_current,
 % voltage, outputs} (coil space, in this wrapper's (IMAS) convention), optional
 % convention {state_sign, input_sign, output_sign {output: sign}} (each +1 or
 % -1, default +1), notes.
@@ -71,9 +71,9 @@ end
 
 % outputs vocabulary (before the convention block, which refers to the outputs)
 for ii = 1:p
-    if isempty(regexp(outputs{ii},'^(rmag|zmag|rX|zX|Ip|Dist2ndSep|gap[1-9][0-9]*)$','once'))
+    if isempty(regexp(outputs{ii},'^(rmag|zmag|rX|zX|Ip|rc|zc|Dist2ndSep|gap[1-9][0-9]*)$','once'))
         error('plasmaless:observable', ['%s: output ''%s'' is not in the vocabulary ', ...
-            '{rmag, zmag, rX, zX, Ip, gap<k>, Dist2ndSep}.'], desc_file, outputs{ii});
+            '{rmag, zmag, rX, zX, Ip, rc, zc, gap<k>, Dist2ndSep}.'], desc_file, outputs{ii});
     end
 end
 
@@ -193,6 +193,7 @@ model.source = struct('model_dir',model_dir,'files',d.files,'shot',d.shot,'time'
 % operating point: zeros, overridden by the descriptor
 op.coil_current = zeros(n_coils,1);
 op.coil_current_given = false(n_coils,1);
+op.loop_current = zeros(n_loops,1);   % passive states are deviations around 0
 op.voltage = zeros(n_coils,1);
 op.voltage_given = false(n_coils,1);
 op.y = zeros(p,1);
