@@ -30,13 +30,13 @@ classdef test_vertical_instability < matlab.unittest.TestCase
             Cia = model.C(model.ind_Ia,:);
             testCase.verifyEqual(Cia(3,:),Cia(4,:));
             testCase.verifyEqual(Cia(13,:),-Cia(14,:));
-            % Vps_VS1 (input 12) = +PF2 +PF3 -PF4 -PF5 supply voltages (inputs 8..11)
+            % Vps_VS1 (input 12) = -PF2 -PF3 +PF4 +PF5 supply voltages (inputs 8..11)
             Bc = model.Bc;
             testCase.verifyEqual(Bc(:,12), ...
-                Bc(:,8)+Bc(:,9)-Bc(:,10)-Bc(:,11), ...
+                -Bc(:,8)-Bc(:,9)+Bc(:,10)+Bc(:,11), ...
                 'AbsTol',1e-12*max(abs(Bc(:))), ...
-                'Vps_VS1 must act as +PF2 +PF3 -PF4 -PF5.');
-            testCase.verifyEqual(model.topology.P(7:10,12),[1;1;-1;-1]);
+                'Vps_VS1 must act as -PF2 -PF3 +PF4 +PF5.');
+            testCase.verifyEqual(model.topology.P(7:10,12),[-1;-1;1;1]);
         end
 
         function test_single_unstable_eigenmode(testCase)

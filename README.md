@@ -28,7 +28,7 @@ Vps = {CS3U, CS2U, CS1U, CS1L, CS2L, CS3L, PF1, PF2, PF3, PF4, PF5, VS1, PF6, VS
 mapped to the circuit voltages Vc = {CS3U, CS2U, CS1, CS2L, CS3L, PF1, PF2, PF3, PF4, PF5, PF6, VS3} by `Vc = map_powersupplies_to_circuits(Vps)` (matrix B of the state space model includes this map):
 
 - Vc_CS1 = Vps_CS1U + Vps_CS1L (the two supplies are in series);
-- the VS1 supply is in parallel to the supplies of PF2, PF3, PF4, PF5: Vc_PF2 = Vps_PF2 + Vps_VS1, Vc_PF3 = Vps_PF3 + Vps_VS1, Vc_PF4 = Vps_PF4 - Vps_VS1, Vc_PF5 = Vps_PF5 - Vps_VS1;
+- the VS1 supply is in parallel to the supplies of PF2, PF3, PF4, PF5: Vc_PF2 = Vps_PF2 - Vps_VS1, Vc_PF3 = Vps_PF3 - Vps_VS1, Vc_PF4 = Vps_PF4 + Vps_VS1, Vc_PF5 = Vps_PF5 + Vps_VS1;
 - Vc_VS3 = Vps_VS3; all other circuits have Vc = Vps.
 
 The output of the state space model is unchanged: the **14 coil currents** Ia = {CS3U, CS2U, CS1U, CS1L, CS2L, CS3L, PF1..PF6, VS3U, VS3L} (Ia_CS1U = Ia_CS1L = Ic_CS1, Ia_VS3U = -Ic_VS3, Ia_VS3L = Ic_VS3) and the passive currents Ie. `map_coils_to_circuits(Ia)` gives the circuit currents from coil currents (for example for a warm start; it raises an error if the coil currents violate the series/antiseries constraints). Magnetic flux on the DINA grid is computed from the output currents as
@@ -37,44 +37,6 @@ psi = Mxi |&nbsp;I_a&nbsp;|
           |&nbsp;I_e&nbsp;|
 
 where **Mxi** is the Green’s-function matrix mapping (single-coil) conductor currents to flux on that grid. For ITER, **Ra = 0** (superconductivity) is assumed for all coils **except the VS** (vertical stabilization) circuit, so Rcc is zero except Rcc_VS3 = R_VS3U + R_VS3L.
-
-### Circuits with coils in series and antiseries
-
-The circuits whose coils are connected are CS1 (series) and VS3 (antiseries). Inductances and resistances come from `data/md_dd4`.
-
-```text
-CS1 circuit: CS1U and CS1L in SERIES, one current Ic_CS1 (superconducting, R = 0)
-
-      Vps_CS1U        Vps_CS1L
-      +------+        +------+
- +----| PS + |--------| PS + |----+          Vc_CS1 = Vps_CS1U + Vps_CS1L
- |    +------+        +------+    |
- |                                 |
- |   +--------+       +--------+   |
- +---| CS1U   |-------| CS1L   |---+  --> Ic_CS1  (same current in both coils)
-     +--------+   M   +--------+
-     L = 760.8 mH     L = 760.8 mH     M(CS1U,CS1L) = 229 mH, R = 0
-
- Ia_CS1U = Ia_CS1L = Ic_CS1
- Lcc = L_CS1U + L_CS1L + 2 M = 1979 mH,   Rcc = 0
-
-VS3 circuit: VS3U and VS3L in ANTISERIES, one current Ic_VS3 (resistive)
-
-        Vps_VS3 = Vc_VS3
-        +---------+
- +------| PS   +  |------+
- |      +---------+      |
- |                       |
- |   +--------+          |   +--------+
- +---| VS3L   |--> Ic    +---| VS3U   |--> flows against its
-     +--------+  (Ia = +Ic)  +--------+    reference: Ia_VS3U = -Ic_VS3
-     L = 0.69 mH               L = 0.69 mH
-     R = 8.855 mOhm            R = 8.855 mOhm
-
- Ia_VS3L = +Ic_VS3,  Ia_VS3U = -Ic_VS3   (positive Vc_VS3 -> positive Ia_VS3L)
- Lcc = L_VS3U + L_VS3L - 2 M = 1.38 mH  (M(VS3U,VS3L) = 0 in the DINA data)
- Rcc = R_VS3U + R_VS3L = 17.71 mOhm
-```
 
 The Simulink model `plasmaless_timestep.slx` is included as a referenced model in `simulator_plasmaless_model_simulink.slx`. It evolves the circuit response to an input voltage time series Vps (it has no knowledge of the circuits: the matrices `A,B,C,D` carry the mapping, so the Simulink models did not need changes).
 

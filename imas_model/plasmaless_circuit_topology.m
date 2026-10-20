@@ -46,10 +46,10 @@ if isequal(coil_names,iter_coils)
     P(3,[3 4]) = 1;                           % Vc_CS1 = Vps_CS1U + Vps_CS1L (series supplies)
     P(4,5) = 1;  P(5,6) = 1;
     P(6,7) = 1;                               % PF1
-    P(7,[8 12]) = 1;                          % PF2: + Vps_VS1
-    P(8,[9 12]) = 1;                          % PF3: + Vps_VS1
-    P(9,10) = 1;   P(9,12) = -1;              % PF4: - Vps_VS1
-    P(10,11) = 1;  P(10,12) = -1;             % PF5: - Vps_VS1
+    P(7,8) = 1;    P(7,12) = -1;              % PF2: - Vps_VS1
+    P(8,9) = 1;    P(8,12) = -1;              % PF3: - Vps_VS1
+    P(9,[10 12]) = 1;                         % PF4: + Vps_VS1
+    P(10,[11 12]) = 1;                        % PF5: + Vps_VS1
     P(11,13) = 1;                             % PF6
     P(12,14) = 1;                             % Vc_VS3 = Vps_VS3
     is_iter = true;

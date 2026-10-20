@@ -393,7 +393,7 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             % power-supply voltages -> circuit voltages
             Vps = (1:14)';   % CS3U CS2U CS1U CS1L CS2L CS3L PF1 PF2 PF3 PF4 PF5 VS1 PF6 VS3
             Vc = map_powersupplies_to_circuits(Vps);
-            expected = [1 2 3+4 5 6 7 8+12 9+12 10-12 11-12 13 14]';
+            expected = [1 2 3+4 5 6 7 8-12 9-12 10+12 11+12 13 14]';
             testCase.verifyEqual(Vc, expected);
             testCase.verifyEqual(map_powersupplies_to_circuits(Vps'), expected');
             testCase.verifyEqual(map_powersupplies_to_circuits([Vps Vps]'), [expected expected]');
