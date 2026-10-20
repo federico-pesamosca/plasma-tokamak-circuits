@@ -7,11 +7,23 @@ function [model, x0] = configure_plasmaless_model(em_coupling, pf_active, pf_pas
 % pf_active:   coils (name, resistance), same order as em_coupling
 % pf_passive:  loops (name, resistance), same order as em_coupling
 % The resistance of every coil and loop is read from the IDSs.
-% Output model: sysd, A, B, C, D (discrete), dt, M, R, coil_names, loop_names,
-% n_coils, n_loops.
+%
+% The state is the current of the 12 active CIRCUITS and of the passive loops,
+% x = [Ic; Ie], Ic = {CS3U CS2U CS1 CS2L CS3L PF1..PF6 VS3} (see
+% plasmaless_circuit_topology): CS1U/CS1L are in series (Ia_CS1U = Ia_CS1L = Ic_CS1)
+% and VS3U/VS3L in antiseries (Ia_VS3U = -Ic_VS3, Ia_VS3L = Ic_VS3). With Ia = T*Ic
+% the circuit matrices are Mcc = T'*Maa*T, Mce = T'*Mae, Rcc = T'*Raa*T.
+% The input is the 14 power-supply voltages Vps = {CS3U CS2U CS1U CS1L CS2L CS3L
+% PF1..PF5 VS1 PF6 VS3} mapped to the circuit voltages Vc = P*Vps (see
+% map_powersupplies_to_circuits); the output is y = [Ia (14 coils); Ie], i.e.
+% the same 14 coil currents and passive loop currents as before.
+% Output model: sysd, A, B, C, D (discrete), dt, M, R (circuits, [Mcc Mce; Mec Mee]),
+% M_coils, R_coils (single coils), T, P, coil_names, circuit_names, ps_names,
+% loop_names, n_coils, n_circuits, n_ps, n_loops, n_states.
 % pf_active_init, pf_passive_init (optional, warm start): single time slice
-% giving the initial state x0 = [Ia; Ie]; coils are matched to the model by
-% short name, loops by position (name checked). Without them x0 is zero.
+% giving the initial state x0 = [Ic; Ie]; coils are matched to the model by
+% short name (the coil currents must satisfy the series/antiseries constraints),
+% loops by position (name checked). Without them x0 is zero.
 
 if nargin ~= 4 && nargin ~= 6
     error('plasmaless:nargin','Use 4 inputs (cold start) or 6 inputs (warm start).');
@@ -46,9 +58,24 @@ for ii = 1:n_loops
 end
 R = blkdiag(Raa,Ree);
 
-% build state space
-Ac = -M\R; Bc = M\eye(n_coils+n_loops,n_coils);
-Cc = eye(size(M)); Dc = zeros(size(Cc,1),size(Bc,2));
+% circuits: coils in series/antiseries (CS1U+CS1L, VS3U-VS3L) share one current.
+% Ia = T*Ic, state I = [Ic; Ie], full transformation Tf = blkdiag(T, I):
+%   Mcc.. = Tf'*M*Tf,  R = Tf'*R*Tf,  Vc = T'*Va  (coil voltages) = P*Vps
+topo = plasmaless_circuit_topology(coil_names);
+n_circuits = topo.n_circuits;
+Tf = blkdiag(topo.T, eye(n_loops));
+Mc = Tf'*M*Tf;                 % [Mcc Mce; Mec Mee]
+Rc = Tf'*R*Tf;                 % [Rcc 0; 0 Ree]
+Mc = (Mc+Mc')/2;
+
+% build state space: states [Ic; Ie], inputs Vps (power supplies),
+% outputs [Ia (14 coils); Ie]
+nx = n_circuits+n_loops;
+S = eye(nx,n_circuits);        % circuit voltages enter the circuit rows only
+Ac = -Mc\Rc;
+Bc = Mc\(S*topo.P);
+Cc = Tf;
+Dc = zeros(size(Cc,1),size(Bc,2));
 sys = ss(Ac,Bc,Cc,Dc);
 sysd = c2d(sys,dt);
 
@@ -58,21 +85,33 @@ model.B = sysd.B;
 model.C = sysd.C;
 model.D = sysd.D;
 model.dt = dt;
-model.M = M;
-model.R = R;
+model.M = Mc;                  % circuit inductance [Mcc Mce; Mec Mee]
+model.R = Rc;                  % circuit resistance [Rcc 0; 0 Ree]
+model.M_coils = M;             % single-coil inductance [Maa Mae; Mea Mee]
+model.R_coils = R;
 model.coil_names = coil_names;
 model.loop_names = loop_names;
+model.circuit_names = topo.circuit_names;
+model.ps_names = topo.ps_names;
+model.topology = topo;
+model.T = topo.T;              % Ia = T*Ic
+model.P = topo.P;              % Vc = P*Vps
 model.n_coils = n_coils;
+model.n_circuits = n_circuits;
+model.n_ps = topo.n_ps;
 model.n_loops = n_loops;
+model.n_states = nx;
 
-% initial state
-x0 = zeros(n_coils+n_loops,1);   % cold start, as x0 = zeros(size(A,1),1) in run_plasmaless_model.m
+% initial state [Ic; Ie] (circuit currents)
+x0 = zeros(nx,1);   % cold start
 if nargin == 6
     idx = match_coils(model, pf_active_init);
+    Ia0 = zeros(1,n_coils);
     for ii = 1:n_coils
-        x0(ii) = single_value(pf_active_init.coil{idx(ii)}.current.data, ...
+        Ia0(ii) = single_value(pf_active_init.coil{idx(ii)}.current.data, ...
             ['pf_active coil ' coil_names{ii} ' current']);
     end
+    x0(1:n_circuits) = map_coils_to_circuits(Ia0,topo);
     if numel(pf_passive_init.loop) ~= n_loops
         error('plasmaless:loops','pf_passive has %d loops, the model %d.', ...
             numel(pf_passive_init.loop), n_loops);
@@ -83,7 +122,7 @@ if nargin == 6
             error('plasmaless:loops','pf_passive loop %d is ''%s'', the model expects ''%s''.', ...
                 ii, name, loop_names{ii});
         end
-        x0(n_coils+ii) = single_value(pf_passive_init.loop{ii}.current, ...
+        x0(n_circuits+ii) = single_value(pf_passive_init.loop{ii}.current, ...
             ['pf_passive loop ' name ' current']);
     end
 end
