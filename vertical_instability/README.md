@@ -8,7 +8,7 @@ run_vertical_instability
 runtests('tests/test_vertical_instability.m')
 ```
 
-The runner plots a 0.01 V step on the active coil with the largest input projection onto the unstable mode. It shows `zIp`, active-current perturbations and passive-current perturbations until the vertical displacement first reaches approximately 5 cm, then calls `plot_vertical_instability` for the response histories and an ITER cross-section animation. `run_vertical_instability_model` remains a compatibility entry point. These are deviations from the equilibrium, not absolute currents or absolute plasma height.
+The runner plots a 0.01 V step on the power supply with the largest input projection onto the unstable mode (the 14 supplies `Vps` are defined in the main `README.md`; for the default equilibrium it is `VS3`). It shows `zIp`, the coil-current perturbations (all 14 coils) and passive-current perturbations until the vertical displacement first reaches approximately 5 cm, then calls `plot_vertical_instability` for the response histories and an ITER cross-section animation. `run_vertical_instability_model` remains a compatibility entry point. These are deviations from the equilibrium, not absolute currents or absolute plasma height.
 
 ## Configuration and outputs
 
@@ -20,24 +20,24 @@ eq = extract_equilibrium_data(uri,time);
 [model,x0] = configure_vertical_instability_model(0.001,eq,em,pa,pe);
 ```
 
-`model.A/B/C/D`, `sysd`, `dt`, `M`, `R`, `coil_names`, `loop_names`, `n_coils` and `n_loops` follow the existing plasmaless configuration structure. `M` is the reduced effective inductance. The continuous model is available as `sys` and `Ac/Bc/Cc/Dc`; `M11/M12/M21/M22` expose the descriptor blocks. Discretization is exact zero-order hold.
+`model.A/B/C/D`, `sysd`, `dt`, `M`, `R`, `coil_names`, `circuit_names`, `ps_names`, `loop_names`, `n_coils`, `n_circuits`, `n_ps`, `n_loops`, `T` and `P` follow the plasmaless configuration structure (`configure_plasmaless_model`). `M` is the reduced effective inductance. The continuous model is available as `sys` and `Ac/Bc/Cc/Dc`; `M11/M12/M21/M22` expose the descriptor blocks. Discretization is exact zero-order hold.
 
-The reduced state is `x = [delta_Ia; delta_Ie]`, input is `Va`, and output order is `[zIp; delta_Ia; delta_Ie]`. `zIp = Ip0 * delta_z`; use `zIp/model.Ip0` for displacement in metres. `x0` is a zero perturbation. `Ic0` stores the equilibrium conductor currents separately.
+The reduced state is `x = [delta_Ic; delta_Ie]`: the perturbation of the **12 active circuit currents** `Ic = {CS3U, CS2U, CS1, CS2L, CS3L, PF1..PF6, VS3}` (CS1U/CS1L in series, VS3U/VS3L in antiseries, so `Ia = T*Ic`) and of the 102 passive currents. The input is the 14-dimensional power-supply voltage `Vps` mapped to the circuit voltages by `Vc = P*Vps` (`map_powersupplies_to_circuits`). The output order is `[zIp; delta_Ia; delta_Ie]`, with the 14 coil currents `delta_Ia = T*delta_Ic`. `zIp = Ip0 * delta_z`; use `zIp/model.Ip0` for displacement in metres. `x0` is a zero perturbation. `Ic0` stores the equilibrium circuit currents `[Ic0; Ie0]` separately (from the warm-start coil currents of the equilibrium `pf_active`, through `map_coils_to_circuits`), and `Ia0 = [T*Ic0(1:12); Ie0]` the corresponding single-coil currents.
 
 ## Equations
 
-Let `q = Ip0 * delta_z`, `I = [delta_Ia;delta_Ie]`, and `S = [eye(n_coils);zeros(n_loops,n_coils)]`. With total plasma current fixed and radial motion excluded:
+Let `q = Ip0 * delta_z`, `I = [delta_Ic;delta_Ie]`, and `S = [eye(n_circuits);zeros(n_loops,n_circuits)]*P`. With total plasma current fixed and radial motion excluded:
 
 ```text
-M11 * dI/dt + M12 * dq/dt + R * I = S * Va
+M11 * dI/dt + M12 * dq/dt + R * I = S * Vps
 M21 * I + M22 * q = 0
 ```
 
-For equilibrium filament currents `J` and their rigid-displacement derivative `dJdzC = -dJ/dz` (including grid area weights), conductor-to-grid full-flux map `Mxi`, and radial-field map `dBrxdIc`:
+For equilibrium filament currents `J` and their rigid-displacement derivative `dJdzC = -dJ/dz` (including grid area weights), the circuit-to-grid full-flux map `Mxc = Mxi*blkdiag(T,eye(n_loops))` (`Mxi` is the single-coil map of the machine description and `Ia = T*Ic`), and the radial-field map `dBrxdIc` of the circuit currents:
 
 ```text
-M11 = [Maa Mea'; Mea Mee]
-M12 = (dJdzC' * Mxi)' / Ip0
+M11 = [Mcc Mce; Mec Mee]      (Mcc = T'*Maa*T, Mce = T'*Mae, R = [Rcc 0; 0 Ree])
+M12 = (dJdzC' * Mxc)' / Ip0
 M21 = -2*pi * (R_grid .* J)' * dBrxdIc / Ip0
 M22 = -2*pi * sum(R_grid .* dJdzC .* Br_external) / Ip0^2
 Br_external = dBrxdIc * Ic0
@@ -56,8 +56,8 @@ Czr  = -M21 / M22
 Meff = M11 - M12 * (M21 / M22)
 Ac   = -(Meff \ R)
 Bc   = Meff \ S
-Cc   = [Czr; eye(n_coils+n_loops)]
-Dc   = zeros(1+n_coils+n_loops,n_coils)
+Cc   = [Czr; blkdiag(T,eye(n_loops))]      (outputs: zIp, Ia = T*Ic, Ie)
+Dc   = zeros(1+n_coils+n_loops,n_ps)
 ```
 
 There is no direct voltage feedthrough to displacement: it is reconstructed from the current states. No radial-force or plasma-current equation is included.
@@ -74,9 +74,9 @@ Jphi = orientation * 2*pi * (R * dp/dpsi + F*dF/dpsi / (mu0*R))
 
 The orientation is inferred from the signed stored plasma current after checking the integrated magnitude. Density outside the LCFS is excluded. The configured density is normalized to the supplied `Ip0` only after its integral agrees within 5%; unsupported profiles, truncated plasma support, or inadequate flux-map coverage cause an error. The default entry's correction is approximately 0.999908. The extractor returns `RR`, `ZZ`, `Ip0`, `Jtor`, `boundary`, `pf_active` and `pf_passive` for configuration, plus `psi0` and `psix` for plotting; total magnetic-field arrays and unused metadata are omitted.
 
-DINA coil names `VSU/VSL` are explicitly mapped to machine-description names `VS3U/VS3L`; other conductor names and ordering are checked by the existing plasmaless configurator. Supplying `eq.Ic0` in machine-description order bypasses loading/matching the equilibrium current IDSs.
+DINA coil names `VSU/VSL` are explicitly mapped to machine-description names `VS3U/VS3L`; other conductor names and ordering are checked by the existing plasmaless configurator. Supplying `eq.Ic0` as the circuit currents `[Ic0;Ie0]` (12 + 102 values) bypasses loading/matching the equilibrium current IDSs; otherwise the equilibrium coil currents must satisfy the series/antiseries constraints (`Ia_CS1U = Ia_CS1L`, `Ia_VS3U = -Ia_VS3L`), which the DINA entry does, or `map_coils_to_circuits` raises an error.
 
-The tests check the real equilibrium for one unstable continuous pole and one discrete pole outside the unit circle. An independent two-circuit fixture checks a growing voltage-step response, instantaneous force balance, current outputs and zero feedthrough. No matrix sign or eigenvalue is modified to force instability.
+The tests check the real equilibrium for one unstable continuous pole and one discrete pole outside the unit circle, and the dimensions and series/antiseries structure of the circuit model (14 inputs, 12 circuit states, outputs `Ia` with `Ia_CS1U = Ia_CS1L`, `Ia_VS3U = -Ia_VS3L`, `Vps_VS1` acting as `-PF2 -PF3 +PF4 +PF5`). An independent one-circuit fixture (one coil, one loop, no series connection, so `T = P = 1`) checks a growing voltage-step response, instantaneous force balance, current outputs and zero feedthrough. No matrix sign or eigenvalue is modified to force instability.
 
 ## Flux and LCFS animation
 
@@ -95,10 +95,10 @@ The local `recompute_xpoint_flux` routine finds a stationary point of a spline i
 For consistent first-order rigid vertical movement, isolate the equilibrium plasma self-flux by subtracting the vacuum conductor flux:
 
 ```text
-psi_p0 = psi0 - reshape(Mxi*Ic0,size(psi0))
+psi_p0 = psi0 - reshape(Mxi*Ia0,size(psi0))       % Ia0 = [T*Ic0(1:12); Ie0], single-coil currents
 delta_J = -delta_z * dJ/dZ
 delta_psi_p = -delta_z * dpsi_p0/dZ
-psi = psi0 + reshape(Mxi*delta_Ic,size(psi0)) + delta_psi_p
+psi = psi0 + reshape(Mxi*delta_Ia,size(psi0)) + delta_psi_p   % delta_Ia = output [Ia;Ie] of the model
 ```
 
 Vertical translation of the axisymmetric current distribution translates its flux, so the derivative term includes the rigid plasma response without constructing a large grid-to-grid mutual-inductance matrix. This uses the assumption that the baseline total flux consists of the plasma contribution plus the represented conductor currents. It remains a first-order approximation, not a nonlinear Grad–Shafranov solution.
@@ -116,7 +116,7 @@ This section extends the text above; the model and its equations are unchanged.
 - Passive currents: `opts.passive_currents` `'equilibrium'` (default) requires the 102 machine-description loops with one current each (names checked), else error `vertical:passiveCurrents`; `'zero'` sets them to 0 and records `passive_source = 'zero (not in entry)'`. The PDS scenario entries have none.
 - Also returned: `uri`, `time`, `dd_version`, `psi_sign`, `ampere_ip`, `passive_source`, `boundary_source`, `current_centre_entry`.
 
-**Common model fields.** The configurator also returns kind `'vertical'`, `y_names = {'Ip','rc','zc'}`, `C_y = [0; 0; C(ind_zIp,:)/Ip0]` (discrete), `zc0`, `rc0` (current-weighted centre of the normalised `Jtor` with the force-balance area weights) and `op` (`coil_current`/`loop_current` = `Ic0`, `voltage` = 0 not given, `y = [Ip0; rc0; zc0]` known), so `plasmaless_step_ids`, the run scripts and the MUSCLE3 actor step it like the circuit and linear models. The observables go to `equilibrium.time_slice{1}.global_quantities.ip` and `.current_centre.r/.z`.
+**Common model fields.** The configurator also returns kind `'vertical'`, the state selections of the circuit model (`n_states` 114, `x = [delta_Ic; delta_Ie]`, `x_to_coil = [T zeros(14,102)]` so that the coil currents are `Ia = T*Ic`, `x_to_loop`), the input description (`n_inputs` 14, `input_names` = the supply keys CS3U .. VS3 in `Vps` order, `supply_names` = the machine-description supply names, `coil_to_input` = the fallback map from coil voltages with VS1 = 0), `y_names = {'Ip','rc','zc'}`, `C_y = [0; 0; C(ind_zIp,:)/Ip0]` (discrete), `zc0`, `rc0` (current-weighted centre of the normalised `Jtor` with the force-balance area weights) and `op` (`coil_current` = the 14 equilibrium coil currents `Ia0 = T*Ic0(1:12)`, `loop_current` = `Ie0`, `voltage` = 0 for the 14 supply inputs, not given, `y = [Ip0; rc0; zc0]` known), so `plasmaless_step_ids`, the run scripts and the MUSCLE3 actor step it like the circuit and linear models: the voltage inputs are the 14 power-supply voltages read from `pf_active.supply` (or mapped from the coil voltages when a slice has no supplies). The observables go to `equilibrium.time_slice{1}.global_quantities.ip` and `.current_centre.r/.z`.
 
 **Measured (2026-10-15, dt 0.001 s).**
 

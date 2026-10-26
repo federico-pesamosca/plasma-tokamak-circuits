@@ -1,10 +1,15 @@
 # Standalone MUSCLE3 test of the plasmaless actor (no PDS, no PCS controller):
-# voltage_driver.py applies the pulse train of run_plasmaless_imas.m through the
-# actor; its results file has the run_plasmaless_imas.m layout.
+# voltage_driver.py applies the power-supply voltage pulse train of
+# run_plasmaless_imas.m (one +/-10 V pulse per supply, 14 supplies) through the
+# actor; its results file has the run_plasmaless_imas.m layout (plus Vps and
+# input_names). The driver sends the voltages as the 14 power-supply voltages
+# (pf_active.supply, as NICE evo reads them) or as the 14 coil voltages (the PDS
+# controller's format): setting driver.command below.
 # Run with run_plasmaless_muscle3.sh: it sets PLASMALESS_REPO to this repository and
 # adds a settings file in the run directory with absolute repository paths:
 # driver.md_uri (data/md_dd4) and driver.results_file (plasmaless_muscle3_results.mat
-# in the repository root). The actor uses its md_uri default (the same data/md_dd4).
+# in the repository root), and driver.command from PLASMALESS_M3_COMMAND when set.
+# The actor uses its md_uri default (the same data/md_dd4).
 ymmsl_version: v0.2
 
 programs:
@@ -35,7 +40,7 @@ models:
     description: plasmaless actor driven by the run_plasmaless_imas.m voltage pulse train
     components:
       driver:
-        description: sends F_INIT and the pulse-train voltages, saves the currents
+        description: sends F_INIT and the pulse-train supply voltages, saves the currents
         implementation: voltage_driver
         ports:
           o_i: [equilibrium_out, pf_active_out, voltages_out]
@@ -60,6 +65,16 @@ settings:
   dt: 0.01
   t_interval: 0.01      # must equal dt
   t_end: 28.0
+  # Format of the driver's voltage command (voltage_driver.py; the actor accepts both):
+  #   supply (default): the 14 power-supply voltages in pf_active.supply(:).voltage,
+  #     no names, no coils (as NICE evo reads them, main_imas_evo_rd_muscle3.cc); the
+  #     F_INIT pf_active carries the supplies too. The whole pulse train is applied,
+  #     VS1 included: results equal run_plasmaless_imas.m with the same dt.
+  #   coil: the 14 coil voltages in pf_active.coil(:).voltage, no names (the PDS
+  #     controller's format): CS/PF one-to-one, VS1 dropped (the actor's fallback sets
+  #     it to 0 V), VS3 as VS3L = +Vps_VS3, VS3U = 0. The VS1 pulse (t = 22 .. 23 s)
+  #     is lost: PF2 .. PF5 differ from run_plasmaless_imas.m there.
+  driver.command: supply
   # External linear model instead of the circuit model (directory holding
   # linear_model.json + matrices, absolute path; run_plasmaless_muscle3.sh adds it
   # to paths.ymmsl when given as first argument). The model's states are
@@ -72,9 +87,11 @@ settings:
   #     op.voltage = 0 (the pulse train is applied as is), rmag/zmag/Ip known.
   #   f_init: F_INIT values win, descriptor values only for what F_INIT lacks.
   #     With this driver the cold-start pf_active has currents 0 and the
-  #     pulse-train voltages at t0 (10 V on CS3U), so op.voltage = u(t0) and the
-  #     first pulse is seen as 0 V on CS3U, the later ones (and the end of the
-  #     first) as -10 V; Ip is known as 0 (F_INIT ip).
+  #     pulse-train supply voltages at t0 (10 V on CS3U; in the supplies with
+  #     driver.command supply, mapped from the coil voltages with coil), so
+  #     op.voltage = u(t0) in supply space and the first pulse is seen as 0 V on
+  #     CS3U, the later ones (and the end of the first) as -10 V; Ip is known as
+  #     0 (F_INIT ip).
   # plasmaless.linear_model_dir: "/home/ITER/schneim/public/git/plasma-tokamak-circuits/linearModelSimple_105073_t84.417598"
   # plasmaless.operating_point: descriptor
   # Vertical-instability model instead (not together with linear_model_dir):
@@ -84,8 +101,9 @@ settings:
   # PLASMALESS_VERTICAL_PASSIVE_CURRENTS (and dt/t_end from PLASMALESS_M3_DT /
   # PLASMALESS_M3_T_END: the model is open-loop unstable, keep t_end short).
   # operating_point descriptor = the equilibrium's currents, Ip and current
-  # centre; voltages from F_INIT (no voltage reference in the equilibrium), so
-  # with this driver du = 0 until the first CS3U pulse edge at 0.5 s.
+  # centre; the 14 supply voltages from F_INIT (no voltage reference in the
+  # equilibrium), so with this driver du = 0 until the first CS3U pulse edge at
+  # 0.5 s. States = circuit-current deviations [dIc; dIe] (12 + 102).
   # plasmaless.vertical_equilibrium_uri: "imas:hdf5?path=/work/projects/pds/pds-scenarios/105073/data/in"
   # plasmaless.vertical_equilibrium_time: 84.4176     # default: t0
   # plasmaless.vertical_passive_currents: zero        # default: equilibrium

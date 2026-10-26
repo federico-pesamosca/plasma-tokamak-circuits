@@ -9,24 +9,33 @@ function [model,x0] = configure_vertical_instability_model(dt,equilibrium,em_cou
 %   RR, ZZ, Jtor [A/m^2], Ip0 [A], boundary, pf_active and pf_passive.
 %   An optional Ic0 replaces the two current IDSs (active then passive).
 %
-%   States are perturbations [Ia;Ie] [A], inputs are Va [V], and outputs
-%   are [zIp;Ia;Ie], with zIp = Ip0*delta_z [A m]. Radial displacement and
+%   States are perturbations [Ic;Ie] [A] of the 12 active circuits (CS1U/CS1L
+%   in series, VS3U/VS3L in antiseries, see plasmaless_circuit_topology) and
+%   of the passive loops. Inputs are the 14 power-supply voltages Vps [V]
+%   (map_powersupplies_to_circuits) and outputs are [zIp;Ia;Ie] with the 14
+%   coil currents Ia = T*Ic, zIp = Ip0*delta_z [A m]. Radial displacement and
 %   plasma-current perturbations are excluded. Instantaneous vertical
 %   force balance eliminates zIp using a Schur complement. X0 is zero.
 %   MODEL.A/B/C/D and sysd are discrete, as in configure_plasmaless_model;
 %   MODEL.Ac/Bc/Cc/Dc and sys are continuous. MODEL.M is the effective
 %   inductance; M11/M12/M21/M22 expose the unreduced descriptor blocks.
+%   Mxc = Mxi*blkdiag(T,I) is the circuit-to-grid flux map. An optional
+%   EQ.Ic0 holds equilibrium circuit currents [Ic0;Ie0] (n_circuits+n_loops).
 %
 %   IMAS interface (plasmaless_step_ids, MUSCLE3 actor): kind 'vertical' and
 %   the fields shared with configure_plasmaless_model/configure_linear_model:
-%   n_states, state_names, x_to_coil, x_to_loop (selections of the states),
-%   y_names {'Ip','rc','zc'}, C_y = [0; 0; C(ind_zIp,:)/Ip0] (discrete) and
-%   op: coil_current/loop_current = Ic0 (equilibrium currents, given),
-%   voltage = 0 (not given: the equilibrium has no voltage reference),
-%   y = [Ip0; rc0; zc0] (known). Ip is fixed and radial motion excluded, so
-%   Ip and rc stay constant; zc = zc0 + zIp/Ip0. zc0/rc0 = current-weighted
-%   centre of the (normalised) equilibrium current distribution, same area
-%   weights as the force balance.
+%   n_states (= n_circuits+n_loops: the states are circuit-current
+%   deviations), state_names = [circuit_names loop_names], x_to_coil = [T 0]
+%   (coil currents from the circuit states), x_to_loop, n_inputs,
+%   input_names, supply_names, coil_to_input (the 14 power-supply voltages,
+%   inherited from the base circuit model), y_names {'Ip','rc','zc'},
+%   C_y = [0; 0; C(ind_zIp,:)/Ip0] (discrete) and op: coil_current = Ia0
+%   (equilibrium COIL currents T*Ic0, given), loop_current = Ie0 (given),
+%   voltage = 0 (n_inputs, not given: the equilibrium has no voltage
+%   reference), y = [Ip0; rc0; zc0] (known). Ip is fixed and radial motion
+%   excluded, so Ip and rc stay constant; zc = zc0 + zIp/Ip0. zc0/rc0 =
+%   current-weighted centre of the (normalised) equilibrium current
+%   distribution, same area weights as the force balance.
 %
 %   See also configure_plasmaless_model, extract_equilibrium_data
 
@@ -42,17 +51,23 @@ elseif nargin ~= 5
 end
 base = configure_plasmaless_model(em_coupling,pf_active,pf_passive,dt);
 [Mxi,RR,ZZ] = plasmaless_grid_from_ids(em_coupling);
-n = base.n_coils+base.n_loops;
-dBrxdIc = zeros(size(Mxi));
+% The state uses circuit currents Ic (CS1U/CS1L in series, VS3U/VS3L in
+% antiseries), so the conductor-to-grid flux map is Mxc = Mxi*blkdiag(T,I)
+% (Ia = T*Ic); radial-field derivatives are then taken for the circuits.
+n_circuits = base.n_circuits;
+Tf = blkdiag(base.T,eye(base.n_loops));
+Mxc = Mxi*Tf;
+n = n_circuits+base.n_loops;
+dBrxdIc = zeros(size(Mxc));
 for k = 1:n
-    flux = reshape(Mxi(:,k),size(RR));
+    flux = reshape(Mxc(:,k),size(RR));
     [~,dfluxdz] = gradient(flux,RR(1,:),ZZ(:,1));
     dBrxdIc(:,k) = reshape(-dfluxdz./(2*pi*RR),[],1);
 end
 % Reuse RR/ZZ directly when the machine and equilibrium meshes agree.
 % For a different equilibrium mesh, interpolate before reassigning RR/ZZ.
 if ~isequal(RR,equilibrium.RR) || ~isequal(ZZ,equilibrium.ZZ)
-    Mxi = interpolate_to_equilibrium(Mxi,RR,ZZ,equilibrium);
+    Mxc = interpolate_to_equilibrium(Mxc,RR,ZZ,equilibrium);
     dBrxdIc = interpolate_to_equilibrium(dBrxdIc,RR,ZZ,equilibrium);
 end
 RR = double(equilibrium.RR);
@@ -96,14 +111,14 @@ if any(abs(J([1 end],:))>1e-8*max(abs(J(:))),'all') ...
 end
 % Only the plasma support and its gradient enter the integrals.
 support = Igrid(:)~=0 | dIdz(:)~=0;
-if any(~isfinite(Mxi(support,:)),'all') ...
+if any(~isfinite(Mxc(support,:)),'all') ...
         || any(~isfinite(dBrxdIc(support,:)),'all')
     error('vertical:coverage','Machine flux maps must cover the plasma.');
 end
-Mxi(~support,:) = 0;
+Mxc(~support,:) = 0;
 dBrxdIc(~support,:) = 0;
 if isfield(equilibrium,'Ic0')
-    Ic0 = equilibrium.Ic0(:);
+    Ic0 = equilibrium.Ic0(:);   % circuit currents [Ic; Ie] (n_circuits+n_loops)
 else
     active_equilibrium = equilibrium.pf_active;
     % DINA uses VSU/VSL for the same ITER circuits named VS3U/VS3L in
@@ -117,6 +132,11 @@ else
             if strcmp(key,aliases{a,1}) ...
                     && any(strcmp(base.coil_names,aliases{a,2}))
                 active_equilibrium.coil{k}.name = aliases{a,2};
+                % plasmaless_coil_key prefers a non-empty identifier
+                if isfield(active_equilibrium.coil{k},'identifier') ...
+                        && ~isempty(active_equilibrium.coil{k}.identifier)
+                    active_equilibrium.coil{k}.identifier = aliases{a,2};
+                end
             end
         end
     end
@@ -127,7 +147,7 @@ validateattributes(Ic0,{'numeric'},{'column','numel',n,'finite','real'});
 % Vacuum conductor field only, excluding the plasma self-field.
 Br_external = reshape(dBrxdIc*Ic0,size(J));
 M11 = base.M;
-M12 = (dIdz(:)'*Mxi)'/Ip0;
+M12 = (dIdz(:)'*Mxc)'/Ip0;
 % Direct Lorentz-force form used in the updated make_rzip_model.m.
 M21 = -2*pi*(Igrid(:).*RR(:))'*dBrxdIc/Ip0;
 M22 = -2*pi*sum(dIdz.*RR.*Br_external,'all')/Ip0^2;
@@ -136,16 +156,19 @@ if ~isfinite(M22) || abs(M22) <= eps*norm(M11,'fro')
 end
 Czr = -M21/M22;
 Meff = M11-M12*(M21/M22);
-S = eye(n,base.n_coils);
+% Inputs: power-supply voltages Vps, mapped to circuit voltages Vc = P*Vps
+S = eye(n,n_circuits)*base.P;
 Ac = -(Meff\base.R);
 Bc = Meff\S;
-Cc = [Czr;eye(n)];
-Dc = zeros(n+1,base.n_coils);
+% Outputs: zIp, the 14 coil currents Ia = T*Ic and the passive currents Ie
+Cc = [Czr;Tf];
+n_out = size(Tf,1);
+Dc = zeros(n_out+1,base.n_ps);
 sys = ss(Ac,Bc,Cc,Dc);
-sys.InputName = strcat('V_',base.coil_names);
+sys.InputName = strcat('Vps_',base.ps_names);
 sys.OutputName = [{'zIp'},strcat('I_',base.coil_names), ...
     strcat('I_',base.loop_names)];
-sys.StateName = [strcat('dI_',base.coil_names),strcat('dI_',base.loop_names)];
+sys.StateName = [strcat('dIc_',base.circuit_names),strcat('dI_',base.loop_names)];
 sysd = c2d(sys,dt,'zoh');
 model = base;
 model.kind = 'vertical';
@@ -166,7 +189,10 @@ model.M21 = M21;
 model.M22 = M22;
 model.Czr = Czr;
 model.Ip0 = Ip0;
-model.Ic0 = Ic0;
+model.Ic0 = Ic0;                 % equilibrium circuit currents [Ic0; Ie0]
+model.Ia0 = Tf*Ic0;              % equilibrium coil currents [Ia0; Ie0] (single coils)
+model.Mxc = Mxc;
+model.dBrxdIc = dBrxdIc;
 model.Jtor = J;
 model.dJdzC = -dJdz;
 model.RR = RR;
@@ -180,13 +206,21 @@ model.singular_perturbation = true;
 % Current centre of the equilibrium distribution (Igrid sums to Ip0).
 model.zc0 = sum(Igrid.*ZZ,'all')/Ip0;
 model.rc0 = sum(Igrid.*RR,'all')/Ip0;
+% IMAS interface: states are deviations [dIc; dIe] of the circuit currents,
+% the coil currents are op.coil_current + x_to_coil*x with x_to_coil = [T 0]
+% (Ia0 = Tf*Ic0 above); the inputs (n_inputs, input_names, supply_names,
+% coil_to_input) are the base model's 14 power-supply voltages.
+model.n_states = n;
+model.state_names = [base.circuit_names base.loop_names];
+model.x_to_coil = [base.T zeros(base.n_coils,base.n_loops)];
+model.x_to_loop = [zeros(base.n_loops,base.n_circuits) eye(base.n_loops)];
 % Observables for the IMAS interface: zc = zc0 + C(ind_zIp,:)*x/Ip0.
 model.y_names = {'Ip','rc','zc'};
 model.C_y = [zeros(2,n);sysd.C(model.ind_zIp,:)/Ip0];
-model.op = struct('coil_current',Ic0(1:base.n_coils), ...
+model.op = struct('coil_current',model.Ia0(1:base.n_coils), ...
     'coil_current_given',true(base.n_coils,1), ...
-    'loop_current',Ic0(base.n_coils+1:end), ...
-    'voltage',zeros(base.n_coils,1),'voltage_given',false(base.n_coils,1), ...
+    'loop_current',Ic0(base.n_circuits+1:end), ...
+    'voltage',zeros(base.n_inputs,1),'voltage_given',false(base.n_inputs,1), ...
     'y',[Ip0;model.rc0;model.zc0],'y_known',true(3,1));
 model.source = equilibrium_source(equilibrium);
 x0 = zeros(n,1);

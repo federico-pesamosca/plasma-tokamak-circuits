@@ -9,9 +9,11 @@ classdef test_plasmaless_vertical < matlab.unittest.TestCase
     % Data: DD4 PDS scenario entry 105073 at 84.4176 s (j_phi stored, no passive
     % currents, open stored LCFS) and the DD3 DINA entry 105108/2 at 100 s (the
     % model author's default).
-    % Seven tests
+    % States are the 12 circuit + 102 loop current deviations, inputs the 14
+    % power-supply voltages (pf_active.supply slices). Seven tests
     % 1) test_build_dd4 (zero passive currents: one unstable pole, common
-    %    model fields, discrete C row, zc0 vs the entry's current_centre.z)
+    %    model fields, coil currents T*Ic0, discrete C row, zc0 vs the entry's
+    %    current_centre.z)
     % 2) test_build_dd3_default (author's default entry, passive currents of the entry)
     % 3) test_step_loop (plasmaless_step_ids vs the direct recursion; Ip, rc
     %    constant, zc = zc0 + C row * x, loop currents = Ic0 + deviation)
@@ -57,15 +59,26 @@ classdef test_plasmaless_vertical < matlab.unittest.TestCase
             testCase.verifyEqual(eq.psi_sign, 1);
             testCase.verifyEqual(sign(eq.ampere_ip), sign(eq.Ip0));
             testCase.verifyTrue(startsWith(eq.boundary_source, 'psi contour'));
-            n = model.n_coils + model.n_loops;
+            % states: 12 circuit-current + 102 loop-current deviations; inputs:
+            % the 14 power-supply voltages; coil currents Ia = T*Ic
+            n = model.n_circuits + model.n_loops;
             testCase.verifyEqual(model.kind, 'vertical');
-            testCase.verifyEqual([model.n_coils model.n_loops model.n_states], [14 102 116]);
-            testCase.verifyEqual(model.x_to_coil, [eye(14) zeros(14,102)]);
-            testCase.verifyEqual(model.x_to_loop, [zeros(102,14) eye(102)]);
+            testCase.verifyEqual([model.n_coils model.n_loops model.n_states], [14 102 114]);
+            testCase.verifyEqual(model.n_inputs, 14);
+            testCase.verifyEqual(model.state_names, [model.circuit_names model.loop_names]);
+            testCase.verifyEqual(model.x_to_coil, [model.T zeros(14,102)]);
+            testCase.verifyEqual(model.x_to_loop, [zeros(102,12) eye(102)]);
             testCase.verifyEqual(model.y_names, {'Ip','rc','zc'});
             testCase.verifyEqual(model.op.y_known, true(3,1));
             testCase.verifyEqual(model.op.y, [eq.Ip0; model.rc0; model.zc0]);
-            testCase.verifyEqual(model.op.coil_current, model.Ic0(1:14));
+            % op.coil_current: equilibrium coil currents T*Ic0 (CS1U = CS1L,
+            % VS3U = -VS3L by construction)
+            testCase.verifyEqual(model.op.coil_current, model.Ia0(1:14));
+            testCase.verifyEqual(model.op.coil_current, model.T*model.Ic0(1:12));
+            iU = strcmp(model.coil_names,'CS1U'); iL = strcmp(model.coil_names,'CS1L');
+            testCase.verifyEqual(model.op.coil_current(iU), model.op.coil_current(iL));
+            testCase.verifyEqual(model.op.coil_current(strcmp(model.coil_names,'VS3U')), ...
+                -model.op.coil_current(strcmp(model.coil_names,'VS3L')));
             testCase.verifyEqual(model.op.loop_current, zeros(102,1));
             testCase.verifyEqual(model.op.voltage, zeros(14,1));
             testCase.verifyFalse(any(model.op.voltage_given));
@@ -106,10 +119,10 @@ classdef test_plasmaless_vertical < matlab.unittest.TestCase
         function test_step_loop(testCase)
             model = testCase.model4;
             n_steps = 300;
-            % 1 V on VS3U and -1 V on VS3L from the first step (deviation input)
-            u = zeros(model.n_coils,1);
-            u(strcmp(model.coil_names,'VS3U')) = 1;
-            u(strcmp(model.coil_names,'VS3L')) = -1;
+            % 1 V on the VS3 supply from the first step (deviation input in
+            % supply space)
+            u = zeros(model.n_inputs,1);
+            u(strcmp(model.input_names,'VS3')) = 1;
             x = zeros(model.n_states,1); xd = x;
             zc = zeros(n_steps,1);
             for k = 1:n_steps
@@ -118,9 +131,9 @@ classdef test_plasmaless_vertical < matlab.unittest.TestCase
                 xd = model.A*xd + model.B*u;
                 testCase.assertEqual(x, xd);
                 testCase.assertEqual(cellfun(@(c) c.current.data, pfa.coil(:)), ...
-                    model.op.coil_current + xd(1:14), 'AbsTol', 1e-9);
+                    model.op.coil_current + model.x_to_coil*xd, 'AbsTol', 1e-9);
                 testCase.assertEqual(cellfun(@(l) l.current, pfp.loop(:)), ...
-                    model.op.loop_current + xd(15:end), 'AbsTol', 1e-9);
+                    model.op.loop_current + model.x_to_loop*xd, 'AbsTol', 1e-9);
                 testCase.assertEqual(y_out.names, {'Ip','rc','zc'});
                 testCase.assertEqual(y_out.values(1:2), [model.Ip0; model.rc0]);
                 zIp = model.C(model.ind_zIp,:)*xd;
@@ -185,9 +198,11 @@ classdef test_plasmaless_vertical < matlab.unittest.TestCase
             linear = configure_linear_model(fullfile(testCase.rootDir, ...
                 'linearModelSimple_105073_t84.417598'), step, testCase.pf_active);
             testCase.verifyEqual(linear.op.loop_current, zeros(linear.n_loops,1));
-            TS = timeseries_plasmaless_model(0, 20*step, step);
+            TS = timeseries_plasmaless_model(0, 20*step, step);   % nt x 14 supply voltages
             for model = {circuit, linear}
                 m = model{1};
+                testCase.assertEqual(m.n_inputs, size(TS.Data,2));
+                testCase.assertSize(m.B, [m.n_states m.n_inputs]);
                 x = zeros(m.n_states,1);
                 for k = 1:20
                     pf_in = test_plasmaless_vertical.inputSlice(m, TS.Time(k), TS.Data(k,:));
@@ -204,14 +219,15 @@ classdef test_plasmaless_vertical < matlab.unittest.TestCase
 
     methods (Static)
         function pf_in = inputSlice(model, t, u)
-            % one-slice pf_active with coil voltages u at time t (coils by name)
+            % one-slice pf_active with the supply voltages u (model.n_inputs,
+            % names model.supply_names) at time t, no coils
             pf_in = ids_init('pf_active');
             pf_in.ids_properties.homogeneous_time = 1;
             pf_in.time = t;
-            pf_in.coil = ids_allocate('pf_active','coil',model.n_coils);
-            for ii = 1:model.n_coils
-                pf_in.coil{ii}.name = model.coil_names{ii};
-                pf_in.coil{ii}.voltage.data = u(ii);
+            pf_in.supply = ids_allocate('pf_active','supply',model.n_inputs);
+            for jj = 1:model.n_inputs
+                pf_in.supply{jj}.name = model.supply_names{jj};
+                pf_in.supply{jj}.voltage.data = u(jj);
             end
         end
     end

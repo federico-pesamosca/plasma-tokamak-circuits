@@ -60,6 +60,11 @@ matlab -singleCompThread -nodisplay -batch "add_plasmaless_paths; load_plasmales
 cd muscle3
 ./run_plasmaless_muscle3.sh # --> plasmaless_muscle3_results.mat in the repository root
                             #     (MUSCLE3 logs in /scratch/users/$USER/plasmaless/m3_standalone_<date>)
+# the driver sends the pulse train as the 14 power-supply voltages (pf_active.supply,
+# default, setting driver.command: supply) or as the 14 coil voltages (the PDS
+# controller's format; the VS1 pulse at 22..23 s is then lost: PF2..PF5 differ there)
+PLASMALESS_M3_COMMAND=coil ./run_plasmaless_muscle3.sh
+# the results file also holds Vps (nt x 14 sent supply voltages) and input_names
 # same with the external linear model (absolute path as first argument; setting
 # plasmaless.linear_model_dir) --> plasmaless_muscle3_linear_results.mat. The
 # operating point is the descriptor's (setting plasmaless.operating_point: descriptor,
@@ -88,10 +93,15 @@ plot_plasmaless_model
 # fatal error". Reading an IMAS entry first loads the right library. Not needed with the
 # R2025b modules (same HDF5 1.14), where runtests can be called directly.
 add_plasmaless_paths; load_plasmaless_md();
-runtests('tests/test_plasmaless_model.m')   % MATLAB/Simulink model: basic run, step responses, MATLAB-Simulink equivalence
-runtests('tests/test_plasmaless_imas.m')    % IMAS interface: IMAS step loop vs Simulink, contract errors, VS3 step
+% the five test classes in one call:
+%   test_plasmaless_model       MATLAB/Simulink model: basic run, step responses, circuit mappings, MATLAB-Simulink equivalence
+%   test_vertical_instability   vertical model: unstable pole, series/antiseries structure, one-circuit fixture
+%   test_plasmaless_imas        IMAS interface: IMAS step loop vs Simulink, supply/coil-voltage inputs, contract errors, VS3 step
+%   test_plasmaless_linear      external linear model: build, input map, operating point, descriptor errors, round trips
+%   test_plasmaless_vertical    vertical model through IMAS: DD3/DD4 builds, step loop, Ip/rc/zc round trip
+runtests({'tests/test_plasmaless_model.m','tests/test_vertical_instability.m','tests/test_plasmaless_imas.m','tests/test_plasmaless_linear.m','tests/test_plasmaless_vertical.m'})
 # batch form (no desktop):
-matlab -singleCompThread -nodisplay -batch "add_plasmaless_paths; load_plasmaless_md(); runtests('tests/test_plasmaless_imas.m')"
+matlab -singleCompThread -nodisplay -batch "add_plasmaless_paths; load_plasmaless_md(); runtests({'tests/test_plasmaless_model.m','tests/test_vertical_instability.m','tests/test_plasmaless_imas.m','tests/test_plasmaless_linear.m','tests/test_plasmaless_vertical.m'})"
 
 # DD3/DD4 data equivalence (tests/check_dd3_dd4_equivalence.m): two sessions, one module
 # stack each. Part 1 reads the DD3 sources (DINA em_coupling/pf_active/equilibrium grid,

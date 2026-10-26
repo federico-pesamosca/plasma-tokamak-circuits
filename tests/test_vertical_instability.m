@@ -12,6 +12,33 @@ classdef test_vertical_instability < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function test_circuit_states_and_power_supply_inputs(testCase)
+            % ITER model: 12 circuit + 102 passive states, 14 power-supply
+            % inputs, outputs zIp + 14 coil currents + 102 passive currents.
+            model = configure_vertical_instability_model(0.001);
+            testCase.verifyEqual(size(model.A),[114 114]);
+            testCase.verifyEqual(size(model.B),[114 14]);
+            testCase.verifyEqual(size(model.C),[117 114]);
+            testCase.verifyEqual(size(model.D),[117 14]);
+            testCase.verifyEqual(numel(model.circuit_names),12);
+            % warm-start equilibrium currents respect series/antiseries
+            Ia0 = model.Ia0(1:14);
+            testCase.verifyEqual(Ia0(3),Ia0(4),'AbsTol',1e-6);
+            testCase.verifyEqual(Ia0(13),-Ia0(14),'AbsTol',1e-6);
+            testCase.verifyEqual(model.Ic0(12),Ia0(14),'AbsTol',1e-6);
+            % outputs: Ia_CS1U = Ia_CS1L = Ic_CS1, Ia_VS3U = -Ia_VS3L
+            Cia = model.C(model.ind_Ia,:);
+            testCase.verifyEqual(Cia(3,:),Cia(4,:));
+            testCase.verifyEqual(Cia(13,:),-Cia(14,:));
+            % Vps_VS1 (input 12) = -PF2 -PF3 +PF4 +PF5 supply voltages (inputs 8..11)
+            Bc = model.Bc;
+            testCase.verifyEqual(Bc(:,12), ...
+                -Bc(:,8)-Bc(:,9)+Bc(:,10)+Bc(:,11), ...
+                'AbsTol',1e-12*max(abs(Bc(:))), ...
+                'Vps_VS1 must act as -PF2 -PF3 +PF4 +PF5.');
+            testCase.verifyEqual(model.topology.P(7:10,12),[-1;-1;1;1]);
+        end
+
         function test_single_unstable_eigenmode(testCase)
             model = configure_vertical_instability_model(0.001);
             continuous_poles = eig(model.Ac);

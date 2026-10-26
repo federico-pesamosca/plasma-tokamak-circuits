@@ -1,7 +1,10 @@
 function TS = timeseries_plasmaless_model(tstart,tend,dt)
+% timeseries of the 14 power-supply voltages Vps (one +/-A pulse on each supply):
+% Vps = {CS3U CS2U CS1U CS1L CS2L CS3L PF1 PF2 PF3 PF4 PF5 VS1 PF6 VS3}
+% (see map_powersupplies_to_circuits)
 
 % Parameters
-N = 14;           % Number of channels
+N = 14;           % Number of power supplies
 A = 10;           % Pulse amplitude
 pulseWidth = 1;   % Pulse duration (seconds)
 breakTime = 1;    % Break between channels (s)

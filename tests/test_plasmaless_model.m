@@ -13,10 +13,13 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
     % 1) test_basic_run: configure, simulate and plot without warnings.
     % 2) test_matlab_simulink_equivalence: compare MATLAB and Simulink
     %    using timeseries_plasmaless_model and the run script's timing
-    % 3) test_superconductive_coil: check CS3U/PF1 step currents and
-    %    the superconductive and full-circuit bounds on current slope.
-    % 4) test_resistive_coil: apply 5 V to coils 13/14 for 3 s; check
-    %    settling to V/R and constant tail currents in coils 1-12.
+    % 3) test_superconductive_coil: check CS3U/PF1 step currents (input: the
+    %    matching power supply) and the superconductive and full-circuit
+    %    bounds on current slope, using the circuit matrices Mcc/Mce/Mee.
+    % 4) test_resistive_coil: apply 5 V to the VS3 power supply (VS3U/VS3L
+    %    in antiseries) for 3 s; check settling of I_VS3 to V/Rcc, the
+    %    antiseries relation and constant tail currents in the other circuits.
+    % 5) test_circuit_mapping: series/antiseries and power-supply mappings.
 
     properties
         modelName = 'simulator_plasmaless_model_simulink';
@@ -160,17 +163,19 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             end
 
             for coilName = {'CS3U','PF1'}
-                [coilIdx, Lkk, M] = test_plasmaless_model.getCoilInfo(coilName{1});
-                testCase.assertLessThanOrEqual(coilIdx, 12, ...
-                    sprintf(['Coil %s is expected to be superconductive ', ...
-                    '(index <= 12); check model assumptions.'], coilName{1}));
+                % circuit index (state), power-supply index (input), coil index (output)
+                [circIdx, Lkk, M, psIdx, coilIdx] = ...
+                    test_plasmaless_model.getCoilInfo(coilName{1});
+                testCase.assertLessThanOrEqual(circIdx, 11, ...
+                    sprintf(['Circuit %s is expected to be superconductive ', ...
+                    '(circuit index <= 11); check model assumptions.'], coilName{1}));
 
                 tstart = evalin('base','tstart');
                 tend   = evalin('base','tend');
                 dt     = evalin('base','dt');
                 t = (tstart:dt:tend)';
                 u = zeros(numel(t),14);
-                u(:,coilIdx) = V;
+                u(:,psIdx) = V;
                 TS = timeseries(u,t); %#ok<NASGU>
                 TS.Name = 'InputSignals';
                 assignin('base','TS',TS);
@@ -190,23 +195,24 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
                 testCase.verifyGreaterThan(Ik(end), Imin, ...
                     sprintf(['Coil %s: I(end) = %.4g is not above the ', ...
                     'uncoupled estimate Imin = %.4g A. Coupling with ', ...
-                    'other superconductive coils was expected to ', ...
+                    'other superconductive circuits was expected to ', ...
                     'reinforce the current.'], coilName{1}, Ik(end), Imin));
 
                 % --- check 2: tail slope obeys the RL step bounds ---
-                otherSC = setdiff(1:12, coilIdx);
-                m = M(otherSC,coilIdx);
-                LeffSC = Lkk - M(coilIdx,otherSC)*(M(otherSC,otherSC)\m);
+                % (state/matrix indices are those of the circuits)
+                otherSC = setdiff(1:11, circIdx);
+                m = M(otherSC,circIdx);
+                LeffSC = Lkk - M(circIdx,otherSC)*(M(otherSC,otherSC)\m);
                 testCase.assertGreaterThan(LeffSC, 0, ...
                     'Superconductive effective inductance must be positive.');
 
-                % Solve using the full matrix, including resistive coils
-                % and passive structures, without explicitly inverting it.
+                % Solve using the full matrix, including the resistive VS3
+                % circuit and passive structures, without explicitly inverting it.
                 ek = zeros(size(M,1),1);
-                ek(coilIdx) = 1;
+                ek(circIdx) = 1;
                 initialResponse = M\ek;
                 slope_lower = V/LeffSC;
-                slope_upper = V*initialResponse(coilIdx);
+                slope_upper = V*initialResponse(circIdx);
 
                 if debugme == 1
                     ax = nexttile(debugLayout);
@@ -257,9 +263,11 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
 
 
         function test_resistive_coil(testCase)
-            % Simultaneously drive coils 13/14 from zero initial currents.
-            % At steady state their currents are V/R; superconductive
-            % coils 1-12 retain constant, generally nonzero induced currents.
+            % Drive the resistive VS3 circuit (VS3U/VS3L in antiseries) from
+            % zero initial currents with the power supply Vps_VS3. At steady
+            % state its circuit current is V/Rcc, with Rcc = R_VS3U + R_VS3L,
+            % and Ia_VS3L = +Ic_VS3, Ia_VS3U = -Ic_VS3. The other circuits
+            % are superconductive: constant, generally nonzero induced currents.
             debugme = 0; % Set to 1 to plot; close the figure to resume.
             V = 5;       % [V]
             tstart = 0;
@@ -267,22 +275,29 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             dt = 0.01;
             tol_rel = 0.01; % 1% steady-state and tail-variation tolerance
             tol_abs = 1e-6; % [A], for currents close to zero
-            drivenCoils = [13 14];
+            psVS3 = 14;     % Vps = {... PF5 VS1 PF6 VS3}
+            coilVS3U = 13; coilVS3L = 14; circVS3 = 12;
 
             assignin('base','tstart',tstart);
             assignin('base','tend',tend);
             assignin('base','dt',dt);
             model = test_plasmaless_model.configureBase(dt);
 
-            % resistance of the driven coils from the model matrix R
-            resistance = [model.R(13,13) model.R(14,14)];
-            testCase.assertTrue(all(isfinite(resistance) & resistance > 0), ...
-                'Driven coils must have finite positive resistance.');
-            expectedCurrent = V ./ resistance;
+            testCase.assertEqual(model.circuit_names{circVS3}, 'VS3');
+            % circuit resistance of VS3 from the model matrix Rcc
+            Rcc = model.R(circVS3,circVS3);
+            testCase.assertEqual(Rcc, model.R_coils(coilVS3U,coilVS3U) ...
+                + model.R_coils(coilVS3L,coilVS3L), 'RelTol', 1e-12, ...
+                'Rcc(VS3) must be the sum of the two coil resistances.');
+            testCase.assertTrue(isfinite(Rcc) && Rcc > 0, ...
+                'The VS3 circuit must have finite positive resistance.');
+            expectedCurrent = V / Rcc;
+            drivenCoils = [coilVS3U coilVS3L];
+            expectedCoil = [-expectedCurrent expectedCurrent];
 
             t = (tstart:dt:tend)';
             u = zeros(numel(t),14);
-            u(:,drivenCoils) = V;
+            u(:,psVS3) = V;
             TS = timeseries(u,t);
             TS.Name = 'InputSignals';
             assignin('base','TS',TS);
@@ -300,16 +315,23 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             testCase.assertGreaterThanOrEqual(nnz(tailMask), 2, ...
                 'At least two tail samples are required to check settling.');
 
-            % Require the entire tail to be near V/R, rather than merely
+            % Positive Vps_VS3 must give a positive VS3L current (and the
+            % antiseries VS3U current of opposite sign) at every sample.
+            testCase.verifyGreaterThan(currents(end,coilVS3L), 0, ...
+                'A positive VS3 voltage must give a positive VS3L current.');
+            testCase.verifyEqual(currents(:,coilVS3U), -currents(:,coilVS3L), ...
+                'AbsTol', 1e-9, 'VS3U and VS3L must be in antiseries.');
+
+            % Require the entire tail to be near V/Rcc, rather than merely
             % crossing the expected current at the final sample.
             for k = 1:numel(drivenCoils)
                 coilIdx = drivenCoils(k);
-                maxError = max(abs(currents(tailMask,coilIdx) - expectedCurrent(k)));
+                maxError = max(abs(currents(tailMask,coilIdx) - expectedCoil(k)));
                 testCase.verifyLessThanOrEqual(maxError, ...
-                    tol_abs + tol_rel*abs(expectedCurrent(k)), ...
+                    tol_abs + tol_rel*abs(expectedCoil(k)), ...
                     sprintf(['Coil %d: tail current has not settled to ', ...
-                    'V/R = %.6g A within 1%% by 3 s (max error %.6g A).'], ...
-                    coilIdx, expectedCurrent(k), maxError));
+                    '%.6g A (V/Rcc) within 1%% by 3 s (max error %.6g A).'], ...
+                    coilIdx, expectedCoil(k), maxError));
             end
 
             % Measure peak-to-peak tail variation relative to each coil's
@@ -326,7 +348,7 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
 
             if debugme == 1
                 debugFig = figure('Name', ...
-                    'Resistive coil currents - close to resume test', ...
+                    'VS3 circuit currents - close to resume test', ...
                     'NumberTitle', 'off');
                 debugLayout = tiledlayout(debugFig, 2, 1);
                 for k = 1:numel(drivenCoils)
@@ -335,18 +357,46 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
                     plot(ax, time, currents(:,coilIdx), 'LineWidth', 1.5, ...
                         'DisplayName', 'Simulated current');
                     hold(ax, 'on');
-                    yline(ax, expectedCurrent(k), '--', ...
-                        'DisplayName', 'Steady state: V/R');
+                    yline(ax, expectedCoil(k), '--', ...
+                        'DisplayName', 'Steady state: V/Rcc');
                     hold(ax, 'off');
                     grid(ax, 'on');
                     xlabel(ax, 'Time [s]');
                     ylabel(ax, 'Current [A]');
-                    title(ax, sprintf('Coil %d: %g V step', coilIdx, V));
+                    title(ax, sprintf('Coil %d: Vps_VS3 = %g V step', coilIdx, V));
                     legend(ax, 'Location', 'best');
                 end
                 drawnow;
                 waitfor(debugFig);
             end
+        end
+
+        function test_circuit_mapping(testCase)
+            % Circuit topology: series/antiseries coils and power-supply mapping.
+            topo = plasmaless_circuit_topology();
+            testCase.assertEqual(size(topo.T), [14 12]);
+            testCase.assertEqual(size(topo.P), [12 14]);
+
+            % coil currents from circuit currents and back
+            Ic = (1:12)';
+            Ia = topo.T*Ic;
+            testCase.verifyEqual(Ia(3), Ia(4), 'CS1U and CS1L in series.');
+            testCase.verifyEqual(Ia(13), -Ic(12), 'Ia_VS3U = -Ic_VS3.');
+            testCase.verifyEqual(Ia(14), Ic(12), 'Ia_VS3L = +Ic_VS3.');
+            testCase.verifyEqual(map_coils_to_circuits(Ia), Ic, 'AbsTol', 1e-12);
+            testCase.verifyEqual(map_coils_to_circuits([Ia Ia]'), [Ic Ic]', ...
+                'AbsTol', 1e-12);
+            badIa = Ia; badIa(4) = badIa(4)+1;
+            testCase.verifyError(@() map_coils_to_circuits(badIa), ...
+                'plasmaless:seriesConstraint');
+
+            % power-supply voltages -> circuit voltages
+            Vps = (1:14)';   % CS3U CS2U CS1U CS1L CS2L CS3L PF1 PF2 PF3 PF4 PF5 VS1 PF6 VS3
+            Vc = map_powersupplies_to_circuits(Vps);
+            expected = [1 2 3+4 5 6 7 8-12 9-12 10+12 11+12 13 14]';
+            testCase.verifyEqual(Vc, expected);
+            testCase.verifyEqual(map_powersupplies_to_circuits(Vps'), expected');
+            testCase.verifyEqual(map_powersupplies_to_circuits([Vps Vps]'), [expected expected]');
         end
 
     end
@@ -368,20 +418,22 @@ classdef test_plasmaless_model < matlab.unittest.TestCase
             assignin('base','D',model.D);
         end
 
-        function [coilIdx, Lkk, M] = getCoilInfo(coilName)
-            % Look up the (1-based) index of coilName among the 14 pf
-            % coils, its self-inductance Lkk, and the full matrix M, using
-            % the same machine description as configure_plasmaless_model.m
-            % (load_plasmaless_md).
+        function [circIdx, Lkk, M, psIdx, coilIdx] = getCoilInfo(name)
+            % For a single-coil circuit (CS3U, PF1, ...): its index in the
+            % circuit state, its self-inductance Lcc, the circuit matrix M
+            % ([Mcc Mce; Mec Mee]) of configure_plasmaless_model, the index of
+            % its power supply in Vps and of the coil in the 14 coil outputs.
             [em_coupling,pf_active,pf_passive] = load_plasmaless_md();
             model = configure_plasmaless_model(em_coupling,pf_active,pf_passive,0.01);
             M = model.M;
-            coilIdx = find(strcmp(model.coil_names, coilName), 1);
-            if isempty(coilIdx)
+            circIdx = find(strcmp(model.circuit_names, name), 1);
+            psIdx = find(strcmp(model.ps_names, name), 1);
+            coilIdx = find(strcmp(model.coil_names, name), 1);
+            if isempty(circIdx) || isempty(psIdx) || isempty(coilIdx)
                 error('test_plasmaless_model:CoilNotFound', ...
-                    'Coil %s not found in pf_active.coil.', coilName);
+                    'Circuit %s not found in the model.', name);
             end
-            Lkk = M(coilIdx,coilIdx);
+            Lkk = M(circIdx,circIdx);
         end
     end
 end

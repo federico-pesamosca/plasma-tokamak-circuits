@@ -14,6 +14,9 @@
 # Optional PLASMALESS_M3_DT and PLASMALESS_M3_T_END override dt (= t_interval) and
 # t_end of plasmaless_standalone.ymmsl (the vertical model is unstable: use a short
 # t_end, e.g. PLASMALESS_M3_DT=0.001 PLASMALESS_M3_T_END=1.0).
+# Optional PLASMALESS_M3_COMMAND (supply | coil) sets driver.command: the driver sends
+# the pulse train as the 14 power-supply voltages (pf_active.supply, default) or as
+# the 14 coil voltages (the PDS controller's format; the VS1 pulse is then lost).
 # Uses 2 cores (driver + one single-threaded MATLAB); on the shared login node,
 # run it in Slurm for longer cases, e.g.
 #   srun --partition=all_debug --time=00:30:00 --cpus-per-task=2 --mem=8G ./run_plasmaless_muscle3.sh
@@ -68,6 +71,15 @@ fi
 if [ -n "${PLASMALESS_M3_T_END:-}" ]; then
     echo "  t_end: $PLASMALESS_M3_T_END" >> "$run_dir/paths.ymmsl"
 fi
+# voltage command format of the driver (default supply, in plasmaless_standalone.ymmsl)
+if [ -n "${PLASMALESS_M3_COMMAND:-}" ]; then
+    case "$PLASMALESS_M3_COMMAND" in
+        supply|coil) ;;
+        *) echo "run_plasmaless_muscle3.sh: PLASMALESS_M3_COMMAND must be supply or coil (got '$PLASMALESS_M3_COMMAND')" >&2
+           exit 2 ;;
+    esac
+    echo "  driver.command: $PLASMALESS_M3_COMMAND" >> "$run_dir/paths.ymmsl"
+fi
 
 module use /work/projects/pds/modules/all
 module load IMAS-MUSCLE3/1.0.0-intel-2025b-pds
@@ -77,5 +89,5 @@ rc=$?
 
 echo "muscle_manager exit code: $rc"
 echo "Logs:    $run_dir (muscle3_manager.log, instances/*/stdout.txt, stderr.txt)"
-echo "Results: $results_file (time, Ia, Ie, Y, coil_names, loop_names, y_names)"
+echo "Results: $results_file (time, Ia, Ie, Y, Vps, coil_names, loop_names, y_names, input_names)"
 exit $rc

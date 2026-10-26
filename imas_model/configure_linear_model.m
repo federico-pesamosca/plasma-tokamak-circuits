@@ -8,15 +8,22 @@ function [model, x0] = configure_linear_model(model_dir, dt, pf_active_md)
 % time, files {A, B, C: basenames, .npy or whitespace .txt}, states (n names),
 % inputs (m input names, column order of B; e.g. generator voltages),
 % input_map (input -> {coil short name: coefficient}: the input as a linear
-% combination of the pf_active coil voltages; an input absent or with an
-% empty object is not drivable through pf_active: zero row, warning
-% plasmaless:inputUndriven; without input_map, inputs must be the coil set
-% and the map is the permutation to machine-description order), coil_states
-% (coil -> state), passive_states (list), outputs (p names in {rmag, zmag,
-% rX, zX, Ip, rc, zc, gap<k>, Dist2ndSep}), optional operating_point {coil_current,
-% voltage, outputs} (coil space, in this wrapper's (IMAS) convention), optional
-% convention {state_sign, input_sign, output_sign {output: sign}} (each +1 or
-% -1, default +1), notes.
+% combination of the pf_active coil voltages, the fallback used when an input
+% pf_active carries coil voltages only; an input absent or with an empty
+% object is not drivable from coil voltages, only from the supply voltages:
+% zero row, warning plasmaless:inputUndriven; without input_map, inputs must
+% be the coil set and the map is the permutation to machine-description
+% order), coil_states (coil -> state), passive_states (list), outputs (p names
+% in {rmag, zmag, rX, zX, Ip, rc, zc, gap<k>, Dist2ndSep}), optional
+% operating_point {coil_current (coil space), voltage (keyed EITHER by input
+% names, direct, OR by coil names, mapped with input_map: op.voltage = G*v_coil,
+% an input is given when one of its mapped coils is given; a mix of the two
+% key sets is an error; a key set consisting entirely of input names is taken
+% as input voltages even when those names are also coil names, as 12 of the
+% 14 are, one consisting entirely of coil names is mapped with input_map),
+% outputs} (in this wrapper's (IMAS) convention),
+% optional convention {state_sign, input_sign, output_sign {output: sign}}
+% (each +1 or -1, default +1), notes.
 % Sign convention: the matrix files are written in the provider's frame,
 %   x_file = state_sign * x,  u_file = input_sign * u,  y_file(k) = output_sign(k) * y(k)
 % with x, u, y in the wrapper's (IMAS) convention. Substituting into
@@ -28,16 +35,20 @@ function [model, x0] = configure_linear_model(model_dir, dt, pf_active_md)
 % outputs +1: A and B unchanged, the Ip row unchanged, the geometric rows negated.)
 % The raw file matrices are kept in model.A_file, B_file, C_file.
 % pf_active_md: machine-description pf_active; its coil names/order define
-% model.coil_names; the model input matrix in coil space is B_coil = B*G with
-% G (m x n_coils) built from input_map, and the discrete system is c2d of
-% (A, B_coil, C): the step function takes the 14 coil voltages.
+% model.coil_names and its supply names model.supply_names (matched to the
+% inputs by short key, plasmaless_supply_names). The descriptor's inputs are
+% the model inputs: the discrete system is c2d of (A, B, C) in input space and
+% the step function takes the m (= n_inputs) supply voltages; coil voltages
+% are mapped to the inputs with G (m x n_coils, input_map) as a fallback.
 % Output model: same fields as configure_plasmaless_model (kind 'linear',
 % sysd, A, B, C, D, dt, n_states, state_names, coil_names, n_coils, x_to_coil,
-% loop_names, n_loops, x_to_loop, y_names, C_y, op) plus input_names,
-% input_map (G), source (model_dir, files, shot, time, description), A_c,
-% B_c (continuous, coil space), B_c_input (continuous, input order), C_c (all
-% in the wrapper's convention), convention (state_sign, input_sign, output_sign
-% p x 1), A_file, B_file, C_file (as read, provider's frame).
+% loop_names, n_loops, x_to_loop, n_inputs, input_names, supply_names,
+% coil_to_input (= G), y_names, C_y, op (voltage/voltage_given in input
+% space)) plus input_map (G), source (model_dir, files, shot, time,
+% description), A_c, B_c (continuous, input space; B_c_input is the same
+% matrix, kept for compatibility), C_c (all in the wrapper's convention),
+% convention (state_sign, input_sign, output_sign p x 1), A_file, B_file,
+% C_file (as read, provider's frame).
 % x0: zeros (the run starts at the linearisation point).
 
 if nargin ~= 3
@@ -110,9 +121,9 @@ if ~isequal(sort(coil_keys),sort(coil_names))
         desc_file, strjoin(coil_keys,','), strjoin(coil_names,','));
 end
 
-% input map G (m x n_coils): input k = sum_j G(k,j) * coil voltage j
+% input map G (m x n_coils): input k = sum_j G(k,j) * coil voltage j (the
+% fallback for an input slice with coil voltages only; B stays in input space)
 G = input_matrix(d, inputs, coil_names, desc_file);
-B_coil = B*G;
 
 % states: every state is a coil state or a passive state, not both
 x_to_coil = zeros(n_coils,n);
@@ -154,7 +165,7 @@ if any(real(ev) > 1e-9)
     warning('plasmaless:unstable','%s: %d eigenvalue(s) of A with real part > 1e-9 (max %.3g).', ...
         desc_file, nnz(real(ev) > 1e-9), max(real(ev)));
 end
-sys = ss(A,B_coil,C,zeros(p,n_coils));
+sys = ss(A,B,C,zeros(p,m));
 sysd = c2d(sys,dt);
 if any(sysd.D(:) ~= 0)
     error('plasmaless:size','%s: the discrete D matrix is not zero.', desc_file);
@@ -177,11 +188,14 @@ model.n_loops = n_loops;
 model.x_to_loop = x_to_loop;
 model.y_names = outputs;
 model.C_y = sysd.C;
-model.input_names = inputs;
+model.n_inputs = m;
+model.input_names = inputs;                 % column order of B
+model.supply_names = plasmaless_supply_names(inputs, pf_active_md);
+model.coil_to_input = G;                    % u = G*v_coil (coil-voltage fallback)
 model.input_map = G;
 model.A_c = A;
-model.B_c = B_coil;
-model.B_c_input = B;
+model.B_c = B;                              % continuous, input space
+model.B_c_input = B;                        % alias of B_c (compatibility)
 model.C_c = C;
 model.convention = conv;
 model.A_file = A_file;
@@ -194,8 +208,8 @@ model.source = struct('model_dir',model_dir,'files',d.files,'shot',d.shot,'time'
 op.coil_current = zeros(n_coils,1);
 op.coil_current_given = false(n_coils,1);
 op.loop_current = zeros(n_loops,1);   % passive states are deviations around 0
-op.voltage = zeros(n_coils,1);
-op.voltage_given = false(n_coils,1);
+op.voltage = zeros(m,1);              % input space
+op.voltage_given = false(m,1);
 op.y = zeros(p,1);
 op.y_known = false(p,1);
 if isfield(d,'operating_point') && isstruct(d.operating_point)
@@ -205,8 +219,8 @@ if isfield(d,'operating_point') && isstruct(d.operating_point)
             op.coil_current,'operating_point.coil_current',desc_file);
     end
     if isfield(o,'voltage')
-        [op.voltage, op.voltage_given] = op_values(o.voltage,coil_names, ...
-            op.voltage,'operating_point.voltage',desc_file);
+        [op.voltage, op.voltage_given] = op_voltage(o.voltage,inputs,coil_names,G, ...
+            op.voltage,desc_file);
     end
     if isfield(o,'outputs')
         [op.y, op.y_known] = op_values(o.outputs,outputs,op.y,'operating_point.outputs',desc_file);
@@ -281,7 +295,36 @@ end
 undriven = inputs(~any(G,2));
 if ~isempty(undriven)
     warning('plasmaless:inputUndriven', ['%s: inputs {%s} have no pf_active coil voltage ', ...
-        '(zero rows of input_map): not drivable through pf_active.'], desc_file, strjoin(undriven,','));
+        '(zero rows of input_map): not drivable from coil voltages, only from the ', ...
+        'supply voltages.'], desc_file, strjoin(undriven,','));
+end
+end
+
+function [vals, given] = op_voltage(o, inputs, coil_names, G, vals, desc_file)
+% operating_point.voltage in input space: the keys are either all input names
+% (direct, given per key) or all coil names (coil voltages v_coil mapped with
+% G: vals = G*v_coil, input k given when one of its mapped coils is given); a
+% mix of the two sets, or a key in neither, is an error
+label = 'operating_point.voltage';
+if ~isstruct(o)
+    error('plasmaless:descriptor','%s: %s must be an object name -> value.', desc_file, label);
+end
+keys = fieldnames(o)';
+in_inputs = ismember(keys, inputs);
+in_coils = ismember(keys, coil_names);
+if any(~in_inputs & ~in_coils)
+    error('plasmaless:descriptor','%s: %s.%s is neither an input nor a coil name.', ...
+        desc_file, label, keys{find(~in_inputs & ~in_coils,1)});
+end
+if all(in_inputs)
+    [vals, given] = op_values(o, inputs, vals, label, desc_file);
+elseif all(in_coils)
+    [v_coil, given_coil] = op_values(o, coil_names, zeros(numel(coil_names),1), label, desc_file);
+    vals = G*v_coil;
+    given = any(G(:,given_coil) ~= 0, 2);
+else
+    error('plasmaless:descriptor', ['%s: %s mixes input names {%s} and coil names {%s}; ', ...
+        'use one set.'], desc_file, label, strjoin(keys(in_inputs),','), strjoin(keys(in_coils),','));
 end
 end
 

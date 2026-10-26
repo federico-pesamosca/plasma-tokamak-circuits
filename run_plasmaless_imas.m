@@ -2,8 +2,10 @@
 % (same inputs as run_plasmaless_model.m): the model is built from
 % machine-description IDSs (or an external linear model, see
 % linear_model_dir, or the vertical-instability model, see vertical_uri),
-% and every time step takes a one-slice pf_active
-% with the coil voltages at t and returns pf_active/pf_passive currents at t+dt
+% and every time step takes a one-slice pf_active with the power-supply
+% voltages at t (supply entries; coil voltages are the fallback, mapped with
+% model.coil_to_input) and returns pf_active (coil currents, supply voltages)
+% and pf_passive (loop currents) at t+dt
 
 clearvars -except do_plot
 % plot coil currents at the end (set do_plot = 1 before calling to enable).
@@ -74,13 +76,13 @@ else
     [model, x] = configure_linear_model(linear_model_dir, dt, pf_active_md);
     results_file = fullfile(repo_root,'plasmaless_linear_results.mat');
 end
-fprintf('Model built (%s): %d states, %d coils, %d passive loops, %d observables, dt = %g s\n', ...
-    model.kind, model.n_states, model.n_coils, model.n_loops, numel(model.y_names), dt);
+fprintf('Model built (%s): %d states, %d inputs (supply voltages), %d coils, %d passive loops, %d observables, dt = %g s\n', ...
+    model.kind, model.n_states, model.n_inputs, model.n_coils, model.n_loops, numel(model.y_names), dt);
 % warm start of the circuit model from a one-slice pf_active/pf_passive pair:
 % [model, x] = configure_plasmaless_model(em_coupling, pf_active_md, pf_passive_md, dt, ...
 %     pf_active_slice, pf_passive_slice);
 
-%% prepare inputs
+%% prepare inputs (one pulse per power supply, nt x n_inputs)
 TS = timeseries_plasmaless_model(tstart,tend,dt);
 
 %% run model (one IMAS step per time step, see simulator_plasmaless_model_imas.m)
@@ -90,9 +92,10 @@ if write_output, uri_arg = out_uri; else, uri_arg = []; end
 %% save results and plot (plot_plasmaless_model.m / plot_plasmaless_linear.m)
 coil_names = model.coil_names;
 loop_names = model.loop_names;
+input_names = model.input_names;   % power supplies, columns of TS.Data
 y_names = model.y_names;      % empty for the circuit model
 model_kind = model.kind;
-save(results_file,'time','Ia','Ie','Y','coil_names','loop_names','y_names','model_kind','-v7');
+save(results_file,'time','Ia','Ie','Y','coil_names','loop_names','input_names','y_names','model_kind','-v7');
 fprintf('Results saved to %s\n', results_file);
 
 % same output structure as the Simulink/MATLAB simulators of run_plasmaless_model.m:

@@ -2,11 +2,19 @@ function [pf_active_out, pf_passive_out, x_new, y_out] = plasmaless_step_ids(mod
 % one time step of the plasmaless model (as plasmaless_timestep.slx)
 % model:        from configure_plasmaless_model (circuit), configure_linear_model
 %               or configure_vertical_instability_model (vertical)
-% pf_active_in: one slice (homogeneous_time 1) with the coil voltages u at t
+% pf_active_in: one slice (homogeneous_time 1) with the input voltages u at t:
+%               the power-supply voltages (pf_active_in.supply, one per model
+%               input, matched by short key against model.input_names) are
+%               preferred; without supplies the coil voltages are used and
+%               mapped with u = model.coil_to_input * v_coil (for ITER the VS1
+%               input is then 0), see plasmaless_input_voltages
 % x:            state at t (model.n_states x 1)
 % Step: du = u - op.voltage; x_new = A*x + B*du; the outputs at t+dt are
-%   coil currents  op.coil_current + x_to_coil*x_new   (pf_active_out; the input
-%                  voltages are echoed, they are applied over [t, t+dt])
+%   coil currents  op.coil_current + x_to_coil*x_new   (pf_active_out.coil; the
+%                  coil voltages are echoed only when the input carried coil
+%                  voltages)
+%   supply voltages u (pf_active_out.supply, names model.supply_names: the
+%                  voltages applied over [t, t+dt])
 %   loop currents  op.loop_current + x_to_loop*x_new   (pf_passive_out)
 %   observables    op.y + C_y*x_new                    (y_out: names, values, known)
 % For the circuit model op is zero and y_out is empty; for a linear model the
@@ -24,16 +32,13 @@ if ~isequal(size(x),[model.n_states 1])
     error('plasmaless:state','State must be a %dx1 vector.', model.n_states);
 end
 
-% coil voltages in model order
-idx = match_coils(model, pf_active_in);
-u = zeros(model.n_coils,1);
-for ii = 1:model.n_coils
-    v = pf_active_in.coil{idx(ii)}.voltage.data;
-    if numel(v) ~= 1 || v == -9e40 || ~isfinite(v)
-        error('plasmaless:voltage','pf_active coil %s: expected one voltage value at t = %g, got %d.', ...
-            model.coil_names{ii}, t, numel(v));
-    end
-    u(ii) = v;
+% input voltages in model (power-supply) order
+[u, source] = plasmaless_input_voltages(model, pf_active_in);
+if strcmp(source,'coil')
+    % echo of the coil voltages of the input (same order as model.coil_names)
+    names = cellfun(@plasmaless_coil_key, pf_active_in.coil(:)', 'UniformOutput', false);
+    [~, idx] = ismember(model.coil_names, names);
+    v_coil = cellfun(@(c) c.voltage.data, pf_active_in.coil(idx));
 end
 
 % state update: use the same function of simulator_plamaless_model (matlab/simulink)
@@ -59,7 +64,18 @@ for ii = 1:model.n_coils
         pf_active_out.coil{ii}.identifier = model.coil_names{ii};
     end
     pf_active_out.coil{ii}.current.data = i_coil(ii);
-    pf_active_out.coil{ii}.voltage.data = u(ii);
+    if strcmp(source,'coil')
+        pf_active_out.coil{ii}.voltage.data = v_coil(ii);
+    end
+end
+% the voltages applied over [t, t+dt], one per model input
+pf_active_out.supply = ids_allocate('pf_active','supply',model.n_inputs);
+for jj = 1:model.n_inputs
+    pf_active_out.supply{jj}.name = model.supply_names{jj};
+    if isfield(pf_active_out.supply{jj},'identifier')
+        pf_active_out.supply{jj}.identifier = model.supply_names{jj};
+    end
+    pf_active_out.supply{jj}.voltage.data = u(jj);
 end
 
 pf_passive_out = ids_init('pf_passive');
@@ -85,22 +101,5 @@ switch model.kind
         label = ['plasmaless vertical-instability model (' model.source.description ')'];
     otherwise
         error('plasmaless:model','Unknown model kind ''%s''.', model.kind);
-end
-end
-
-function idx = match_coils(model, pf_active)
-% indices of the model coils in pf_active.coil, matched by short name
-% error if a model coil is missing or pf_active has other coils
-
-names = cellfun(@plasmaless_coil_key, pf_active.coil(:)', 'UniformOutput', false);
-extra = setdiff(names, model.coil_names);
-if ~isempty(extra) || numel(names) ~= model.n_coils
-    error('plasmaless:coils','pf_active coils {%s} do not match the model coils {%s}.', ...
-        strjoin(names,','), strjoin(model.coil_names,','));
-end
-[~, idx] = ismember(model.coil_names, names);
-if any(idx == 0)
-    error('plasmaless:coils','pf_active misses coils %s.', ...
-        strjoin(model.coil_names(idx == 0),','));
 end
 end

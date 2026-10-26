@@ -7,12 +7,14 @@ function [figures,animation] = plot_vertical_instability(model,time,Va,y,equilib
 %   [FIGURES,ANIMATION] = plot_vertical_instability(...,NFRAMES) controls
 %   the number of frames (default 120) and returns figure handles and
 %   X-point diagnostics. EQ.psi0 and EQ.psix must use the same full-flux
-%   sign as the conductor maps. TIME, VA and Y are lsim results; outputs
-%   Y are ordered [zIp;Ia;Ie]. Conductor currents are perturbations.
+%   sign as the conductor maps. TIME, VA and Y are lsim results; VA holds
+%   the n_ps power-supply voltages, outputs Y are ordered [zIp;Ia;Ie] with
+%   the 14 coil currents Ia (all coils are plotted). Currents are perturbations.
 %
 %   Each frame includes every conductor current and the first-order
 %   rigid plasma shift: delta_psi_p = -delta_z*dpsi_p0/dZ, where
-%   psi_p0 = psi0-Mxi*Ic0. This is consistent with delta_J =
+%   psi_p0 = psi0-Mxi*Ia0 (Ia0: single-coil equilibrium currents, the flux
+%   maps are per coil, MODEL.Ia0). This is consistent with delta_J =
 %   -delta_z*dJ/dZ; it does not solve a nonlinear equilibrium.
 %
 %   See also run_vertical_instability, extract_equilibrium_data
@@ -22,7 +24,7 @@ validateattributes(Nframes,{'numeric'},{'scalar','integer','positive'});
 time = time(:);
 n = model.n_coils+model.n_loops;
 if size(y,1) ~= numel(time) || size(y,2) ~= n+1 ...
-        || ~isequal(size(Va),[numel(time),model.n_coils])
+        || ~isequal(size(Va),[numel(time),model.n_ps])
     error('vertical:plotDimensions','TIME, VA and Y dimensions disagree.');
 end
 RR = equilibrium.RR;
@@ -66,7 +68,8 @@ Ic = y(:,[model.ind_Ia model.ind_Ie]);
 zIp = y(:,model.ind_zIp);
 % Subtract the equilibrium vacuum flux to isolate the plasma self-flux.
 % A vertical translation of J translates its flux by the same amount.
-psi_p0 = psi0-reshape(Mxi*model.Ic0,size(RR));
+% Single-coil equilibrium currents [Ia0;Ie0] (the flux maps are per coil).
+psi_p0 = psi0-reshape(Mxi*model.Ia0,size(RR));
 [~,dpsi_p0_dZ] = gradient(psi_p0,RR(1,:),ZZ(:,1));
 frame_indices = unique(round(linspace(1,numel(time),min(Nframes,numel(time)))));
 Nframes = numel(frame_indices);

@@ -1,6 +1,7 @@
 function [time, Ia, Ie, Y] = simulator_plasmaless_model_imas(TS, model, x0, out_uri)
 % run the plasmaless model step by step through its IMAS interface
-% TS:    timeseries of the coil voltages (nt x n_coils), see timeseries_plasmaless_model.m
+% TS:    timeseries of the power-supply voltages (nt x n_inputs, one pulse per
+%        supply), see timeseries_plasmaless_model.m
 % model: model from configure_plasmaless_model, configure_linear_model or
 %        configure_vertical_instability_model
 % x0:    initial state (model.n_states x 1)
@@ -13,12 +14,12 @@ function [time, Ia, Ie, Y] = simulator_plasmaless_model_imas(TS, model, x0, out_
 
 write_output = nargin > 3 && ~isempty(out_uri);
 
-%% prepare inputs
+%% prepare inputs: supply voltages only (no coils), one supply per model input
 pf_active_in = ids_init('pf_active');
 pf_active_in.ids_properties.homogeneous_time = 1;
-pf_active_in.coil = ids_allocate('pf_active','coil',model.n_coils);
-for ii = 1:model.n_coils
-    pf_active_in.coil{ii}.name = model.coil_names{ii};
+pf_active_in.supply = ids_allocate('pf_active','supply',model.n_inputs);
+for jj = 1:model.n_inputs
+    pf_active_in.supply{jj}.name = model.supply_names{jj};
 end
 
 %% run model
@@ -37,10 +38,10 @@ end
 fprintf('Running %d steps, t = %g .. %g s\n', nt-1, time(1), time(end));
 tic;
 for k = 1:nt-1
-    % one-slice input, as sent by a coupled controller
+    % one-slice input (supply voltages at t), as sent by a coupled controller
     pf_active_in.time = time(k);
-    for ii = 1:model.n_coils
-        pf_active_in.coil{ii}.voltage.data = TS.Data(k,ii);
+    for jj = 1:model.n_inputs
+        pf_active_in.supply{jj}.voltage.data = TS.Data(k,jj);
     end
     [pf_active_out, pf_passive_out, x, y_out] = plasmaless_step_ids(model, pf_active_in, x);
     Ia(k+1,:) = cellfun(@(c) c.current.data, pf_active_out.coil);

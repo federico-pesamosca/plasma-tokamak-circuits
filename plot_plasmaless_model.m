@@ -42,7 +42,10 @@ for ii = 1:numel(coil_names)
     coil_names{ii} = key;
 end
 loop_names = cellfun(@(l) strtrim(l.name), pf_passive.loop(:)', 'UniformOutput', false);
-in_label = strcat('V',coil_names);
+% inputs are the 14 power-supply voltages Vps (VS1, VS3 included), outputs the
+% 14 coil currents Ia (all coils) and the passive loop currents Ie
+topo = plasmaless_circuit_topology(coil_names);
+in_label = strcat('Vps',topo.ps_names);
 out_label = [strcat('Ia',coil_names) strcat('Ie',loop_names)];
 
 % active elements location
@@ -102,7 +105,7 @@ for k = 1:N
         ax(k).XTickLabel = [];
     end
     if k ==1
-        title('Input voltage Va [V]')
+        title('Input voltage Vps [V] (power supplies)')
     end
 end
 xlabel(ax(14),'Time (s)');

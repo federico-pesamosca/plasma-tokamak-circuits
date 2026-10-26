@@ -10,11 +10,22 @@ function muscle_plasmaless_actor()
 %   F_INIT equilibrium_f_init  multi-time equilibrium (reference trajectory);
 %                              its message timestamp is the start time t0
 %          pf_active_f_init    multi-time pf_active (machine description +
-%                              scenario coil currents/voltages)
-%   S      pf_active_s         one-slice pf_active with the coil voltages
-%                              (from the controller, coil names absent)
+%                              scenario coil currents/voltages; optionally
+%                              the power-supply voltages in supply(:).voltage:
+%                              supplies whose voltage.data are all empty, as
+%                              in a machine-description pf_active with named
+%                              supplies, count as absent and the coil
+%                              voltages are used instead)
+%   S      pf_active_s         one-slice pf_active with the 14 power-supply
+%                              voltages in supply(:).voltage (preferred, as
+%                              NICE evo reads them) or the 14 coil voltages in
+%                              coil(:).voltage (fallback, the PDS controller's
+%                              format: VS1 is then 0 V and the VS3 supply
+%                              voltage is V_VS3L - V_VS3U); names absent, the
+%                              actor sets them by index
 %   O_I    equilibrium_o_i     one-slice reference pass-through equilibrium
-%          pf_active_o_i       one-slice coil currents (model)
+%          pf_active_o_i       one-slice coil currents (model) and the applied
+%                              supply voltages (supply(:).voltage, named)
 %          pf_passive_o_i      one-slice passive loop currents (model)
 % Settings: dt, t_interval (must equal dt), t_end (mandatory); md_uri
 % (optional, default: data/md_dd4 of this repository); linear_model_dir
@@ -36,8 +47,11 @@ function muscle_plasmaless_actor()
 % Linear model: its states, inputs and outputs are deviations from its
 % linearisation point. The run starts at t0 with x = 0 and the operating
 % point from two sources, the descriptor (operating_point) and the F_INIT
-% data at t0 (coil currents and voltages of the pf_active slice closest to
-% t0, observables found in the equilibrium slice closest to t0):
+% data at t0 (coil currents and input voltages of the pf_active slice closest
+% to t0: op.voltage is in input (supply) space, taken from the slice's
+% supplies, or mapped from its coil voltages with model.coil_to_input, VS1
+% then 0 V and not given; observables found in the equilibrium slice closest
+% to t0):
 %   'descriptor': descriptor values win, F_INIT fills what the descriptor
 %                 does not give. The absolute coil currents and Ip sent to
 %                 the controller start at the linearisation point, which
@@ -54,10 +68,13 @@ function muscle_plasmaless_actor()
 % pass-through because the model does not give it. pf_passive_o_i has one
 % loop per passive state.
 %
-% Vertical model: states are deviations [dIa; dIe] from the equilibrium
-% currents Ic0; op.coil_current/op.loop_current = Ic0 (given), op.voltage = 0
-% not given (the equilibrium has no voltage reference, so 'descriptor' takes
-% the F_INIT voltages at t0 and du = 0 until the controller changes them);
+% Vertical model: states are circuit-current deviations [dIc; dIe] (12
+% circuit currents, CS1U/CS1L in series and VS3U/VS3L in antiseries, + 102
+% passive loops) from the equilibrium currents; op.coil_current = the 14
+% equilibrium coil currents Ia0 and op.loop_current = Ie0 (given), op.voltage
+% = 0 for the 14 supply inputs, not given (the equilibrium has no voltage
+% reference, so 'descriptor' takes the F_INIT input voltages at t0 and du = 0
+% until the controller changes them);
 % observables Ip (fixed), rc (fixed, no radial motion), zc = zc0 + zIp/Ip0,
 % written to global_quantities.ip and global_quantities.current_centre.r/z
 % of equilibrium_o_i. boundary.geometric_axis stays the reference
@@ -179,8 +196,9 @@ coil_names = model_coil_names(pf_active_md);
 
 pfa_t0 = closest_slice(pfa_init, t0, coil_names);
 if ~isempty(vertical_uri)
-    % vertical model: x = 0 (deviations from the equilibrium currents Ic0),
-    % operating point from the equilibrium entry and the F_INIT data at t0
+    % vertical model: x = 0 (circuit-current deviations [dIc; dIe] from the
+    % equilibrium currents), operating point from the equilibrium entry
+    % (op.coil_current = Ia0) and the F_INIT data at t0
     if isa(vertical_time_setting,'py.str') && strlength(string(vertical_time_setting)) == 0
         vertical_time = t0;
     else
@@ -224,8 +242,9 @@ else
         'boundary geometric axis = reference pass-through'], model.source.description, ...
         strjoin(model.y_names(model.op.y_known),'/'));
 end
-fprintf('muscle_plasmaless_actor: %s model built, %d states, %d coils, %d passive loops, %d observables\n', ...
-    model.kind, model.n_states, model.n_coils, model.n_loops, numel(model.y_names));
+fprintf(['muscle_plasmaless_actor: %s model built, %d states, %d inputs (supplies: %s), ', ...
+    '%d coils, %d passive loops, %d observables\n'], model.kind, model.n_states, ...
+    model.n_inputs, strjoin(model.input_names,','), model.n_coils, model.n_loops, numel(model.y_names));
 
 % time loop
 pfa_in = pfa_t0;           % first step: scenario voltages at t0 (as NICE)
@@ -275,13 +294,31 @@ while true
     % The controller does not send coil names; set them by index (F_INIT
     % order, checked above to be the machine-description order), as
     % nice_imas_evo_rd_muscle3 copies them by index from its own pf_active
-    % (cc:206-209, "the controller doesn't give the name of the coils")
-    if numel(pfa_in.coil) ~= numel(coil_names)
+    % (cc:206-209, "the controller doesn't give the name of the coils").
+    % The coil voltages are the fallback input (plasmaless_input_voltages:
+    % VS1 = 0 V, VS3 supply voltage = V_VS3L - V_VS3U); they must be there
+    % unless the slice carries the supply voltages (below).
+    has_supplies = isfield(pfa_in,'supply') && numel(pfa_in.supply) > 0;
+    if numel(pfa_in.coil) ~= numel(coil_names) && ~(has_supplies && isempty(pfa_in.coil))
         error('plasmaless_actor:coils','pf_active_s has %d coils, the model %d.', ...
             numel(pfa_in.coil), numel(coil_names));
     end
     for ii = 1:numel(pfa_in.coil)
         pfa_in.coil{ii}.name = coil_names{ii};
+    end
+    % Power-supply voltages (supply(:).voltage.data, the input NICE evo reads
+    % first: main_imas_evo_rd_muscle3.cc, supply voltage when present, coil
+    % voltage otherwise): the controller sends no names either; set them by
+    % index, the machine-description supply order being the model's input
+    % order. The step function then prefers the supplies to the coil voltages.
+    if has_supplies
+        if numel(pfa_in.supply) ~= model.n_inputs
+            error('plasmaless_actor:supplies','pf_active_s has %d supplies, the model %d inputs.', ...
+                numel(pfa_in.supply), model.n_inputs);
+        end
+        for jj = 1:model.n_inputs
+            pfa_in.supply{jj}.name = model.supply_names{jj};
+        end
     end
 end
 fprintf('muscle_plasmaless_actor: %d exchanges, last t = %.10g\n', n_sent, t);
@@ -348,13 +385,16 @@ end
 function model = model_operating_point(model, pfa_t0, eq_ref, eq_time, t0, op_source)
 % operating point of a linear or vertical model: the model's reference
 % (model.op with its *_given / y_known flags: the descriptor of a linear
-% model, the equilibrium of the vertical model) and the F_INIT data at t0 (coil currents and voltages of the
-% pf_active slice pfa_t0 in model coil order, observables of the equilibrium
-% slice closest to t0). op_source 'descriptor': model reference entries win,
-% F_INIT fills the rest; 'f_init': F_INIT values win, the model reference fills
-% the rest. Passive currents (op.loop_current) always stay the model's.
+% model, the equilibrium of the vertical model) and the F_INIT data at t0
+% (coil currents of the pf_active slice pfa_t0 in model coil order; input
+% voltages in model input (supply) order, from the slice's supplies when it
+% has them, else mapped from its coil voltages by model.coil_to_input, VS1
+% then 0 V and not given; observables of the equilibrium slice closest to
+% t0). op_source 'descriptor': model reference entries win, F_INIT fills the
+% rest; 'f_init': F_INIT values win, the model reference fills the rest.
+% Passive currents (op.loop_current) always stay the model's.
 f_init_wins = strcmp(op_source,'f_init');
-n_cur = 0; n_volt = 0;    % coil entries taken from F_INIT
+n_cur = 0;                % coil currents taken from F_INIT (coil space)
 for ii = 1:model.n_coils
     c = pfa_t0.coil{ii};
     if f_init_wins || ~model.op.coil_current_given(ii)
@@ -362,11 +402,20 @@ for ii = 1:model.n_coils
             ['pf_active coil ' model.coil_names{ii} ' current'], t0);
         n_cur = n_cur + 1;
     end
-    if f_init_wins || ~model.op.voltage_given(ii)
-        model.op.voltage(ii) = check_value(c.voltage.data, ...
-            ['pf_active coil ' model.coil_names{ii} ' voltage'], t0);
-        n_volt = n_volt + 1;
-    end
+end
+% input voltages (supply space, model.n_inputs x 1), same precedence per input
+[u0, u_source, u_given] = plasmaless_input_voltages(model, pfa_t0);
+if f_init_wins
+    take = u_given(:);
+else
+    take = u_given(:) & ~model.op.voltage_given(:);
+end
+model.op.voltage(take) = u0(take);
+n_volt = nnz(take);       % inputs taken from F_INIT
+if strcmp(u_source,'supply')
+    volt_source = 'the F_INIT supply voltages';
+else
+    volt_source = 'the F_INIT coil voltages mapped by coil_to_input (VS1 = 0 V, not given)';
 end
 [~, k] = min(abs(eq_time - t0));
 [vals, known] = plasmaless_observables_from_equilibrium(eq_ref.time_slice{k}, model.y_names);
@@ -378,9 +427,11 @@ end
 model.op.y(from_eq) = vals(from_eq);
 model.op.y_known = model.op.y_known | known;
 fprintf(['muscle_plasmaless_actor: operating point at t0 = %.10g (setting operating_point = %s): ', ...
-    '%d/%d coil currents/voltages from F_INIT pf_active, the others from the model reference; ', ...
+    '%d/%d coil currents from F_INIT pf_active, %d/%d input voltages from %s, ', ...
+    'the others from the model reference; ', ...
     'observables from the F_INIT equilibrium slice t = %.10g: {%s}; sent as absolute values: {%s}; ', ...
-    'not sent (unknown): {%s}\n'], t0, op_source, n_cur, n_volt, eq_time(k), ...
+    'not sent (unknown): {%s}\n'], t0, op_source, n_cur, model.n_coils, n_volt, model.n_inputs, ...
+    volt_source, eq_time(k), ...
     strjoin(model.y_names(from_eq),','), strjoin(model.y_names(model.op.y_known),','), ...
     strjoin(model.y_names(~model.op.y_known),','));
 end
@@ -393,7 +444,12 @@ end
 function pfa = closest_slice(pfa_all, t, coil_names)
 % one-slice pf_active at the sample of pfa_all closest to t (as NICE's
 % getSlice(..., CLOSEST_SAMPLE), cc:156; equidistant samples: the earlier one)
-% with coil currents and voltages, coils named coil_names (by index)
+% with coil currents and voltages, coils named coil_names (by index), and,
+% when pfa_all has a supply AoS, the power-supply voltages (F_INIT names kept;
+% the step function matches them by key). Without supplies, or with supplies
+% whose voltage.data are all empty (machine-description pf_active with named
+% supplies and no voltages), the slice has none and the step function maps
+% the coil voltages to the inputs.
 if pfa_all.ids_properties.homogeneous_time ~= 1
     error('plasmaless_actor:pf_active','F_INIT pf_active must have homogeneous_time 1 (got %d).', ...
         pfa_all.ids_properties.homogeneous_time);
@@ -418,7 +474,36 @@ for ii = 1:n
     pfa.coil{ii}.current.data = c.current.data(k);
     pfa.coil{ii}.voltage.data = c.voltage.data(k);
 end
-fprintf('muscle_plasmaless_actor: initial coil currents/voltages from F_INIT pf_active sample t = %.10g\n', tt(k));
+ns = 0;
+if isfield(pfa_all,'supply')
+    ns = numel(pfa_all.supply);
+end
+if ns > 0
+    % supplies carrying no voltages at all count as absent
+    no_voltage = false(1,ns);
+    for jj = 1:ns
+        no_voltage(jj) = isempty(pfa_all.supply{jj}.voltage.data);
+    end
+    if all(no_voltage)
+        fprintf(['muscle_plasmaless_actor: the %d F_INIT pf_active supplies carry no ', ...
+            'voltages; the coil voltages are used\n'], ns);
+        ns = 0;
+    end
+end
+if ns > 0
+    pfa.supply = ids_allocate('pf_active','supply',ns);
+    for jj = 1:ns
+        s = pfa_all.supply{jj};
+        if numel(s.voltage.data) ~= numel(tt)
+            error('plasmaless_actor:pf_active', ['F_INIT pf_active supply %d (%s): %d ', ...
+                'voltages for %d times.'], jj, char(s.name), numel(s.voltage.data), numel(tt));
+        end
+        pfa.supply{jj}.name = s.name;
+        pfa.supply{jj}.voltage.data = s.voltage.data(k);
+    end
+end
+fprintf(['muscle_plasmaless_actor: initial coil currents/voltages and %d supply voltages ', ...
+    'from F_INIT pf_active sample t = %.10g\n'], ns, tt(k));
 end
 
 function send_ids(instance, port, ids, ids_name, t, t_next)

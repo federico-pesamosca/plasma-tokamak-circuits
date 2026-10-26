@@ -58,13 +58,15 @@ else
     results_file = fullfile(fileparts(mfilename('fullpath')),'plasmaless_matlab_linear_results.mat');
 end
 % matrices used by the simulink model and by the matlab simulator (base workspace):
-% the output is [coil currents; loop currents; observables] (for the circuit model
-% C_full = eye(n_states), as before). Both simulators feed u directly, without the
-% op.voltage subtraction of plasmaless_step_ids: op is zero for the circuit model;
-% for a linear model the pulse train is a voltage deviation and the outputs are
-% deviations too (no op offsets added).
+% the input is the n_inputs power-supply voltages (columns of B, one pulse per
+% supply in the timeseries), the output is [coil currents; loop currents;
+% observables] (for the circuit model [T 0; 0 I]: the 14 coil currents from the
+% 12 circuit states, then the loop currents). Both simulators feed u directly,
+% without the op.voltage subtraction of plasmaless_step_ids: op is zero for the
+% circuit model; for a linear model the pulse train is a voltage deviation and
+% the outputs are deviations too (no op offsets added).
 C_full = [model.x_to_coil; model.x_to_loop; model.C_y];
-D_full = zeros(size(C_full,1), model.n_coils);
+D_full = zeros(size(C_full,1), model.n_inputs);
 
 %% prepare timeseries
 TS = timeseries_plasmaless_model(tstart,tend,dt);

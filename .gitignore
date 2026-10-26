@@ -7,3 +7,5 @@
 # generated results (run_plasmaless_imas/model, MUSCLE3 standalone test)
 plasmaless_*_results.mat
 plasmaless_*_results.png
+# root-level rzip folder
+/rzip/
